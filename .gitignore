@@ -1,0 +1,40 @@
+# === ПРАВИЛЬНЫЙ GITIGNORE ДЛЯ UNITY + RIDER ===
+
+# 1. Игнорируем ВСЁ по умолчанию
+*
+!.*
+
+# 2. Разрешаем корневой .gitignore
+!.gitignore
+
+# 3. Разрешаем папку Scripts
+!/Assets/
+!/Assets/Scripts/
+!/Assets/Scripts/**
+
+# 4. Разрешаем .meta файлы внутри Scripts
+!/Assets/Scripts/**/*.meta
+
+# 5. ОПЯТЬ игнорируем весь мусор Rider и Unity (на случай, если он пролез)
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Папки Unity, которые не нужны в репозитории
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UnityPackageManager/
