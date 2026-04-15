@@ -228,6 +228,18 @@ public class PetSystem : MonoBehaviour
         _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
         _saveManager = FindFirstObjectByType<SaveManager>();
 
+        // Ждем инициализации SDK перед загрузкой данных питомцев
+        StartCoroutine(InitializePetSystem());
+    }
+
+    private System.Collections.IEnumerator InitializePetSystem()
+    {
+        // Ждем пока SDK не будет инициализирован
+        while (!YG2InitializationManager.CanAccessSaves())
+        {
+            yield return null;
+        }
+
         LoadPetsData();
         SetupButtonListeners();
         CloseAllPanels();
