@@ -27,9 +27,24 @@ public class VIPManager : MonoBehaviour
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null) player = playerObj.transform;
 
+        // Ждем инициализации SDK перед доступом к YG2.saves
+        StartCoroutine(InitializeVIP());
+        
+        // Подписываем кнопку на покупку
+        if (purchaseButton != null)
+            purchaseButton.onClick.AddListener(BuyVIP);
+    }
+
+    private System.Collections.IEnumerator InitializeVIP()
+    {
+        // Ждем пока SDK не будет инициализирован
+        while (!YG2InitializationManager.CanAccessSaves())
+        {
+            yield return null;
+        }
+
         // Получаем статус VIP из сохранений
-        if (YG2.isSDKEnabled && YG2.saves != null)
-            vipUnlocked = YG2.saves.vipUnlocked;
+        vipUnlocked = YG2.saves.vipUnlocked;
 
         // Если VIP уже куплен, панель не показываем и скрываем триггеры
         if (vipUnlocked)
@@ -37,10 +52,8 @@ public class VIPManager : MonoBehaviour
             if (vipPanel != null) vipPanel.SetActive(false);
             HideTriggerObjects();
         }
-
-        // Подписываем кнопку на покупку
-        if (purchaseButton != null)
-            purchaseButton.onClick.AddListener(BuyVIP);
+        
+        Debug.Log($"✅ VIPManager: инициализация завершена, VIP разблокирован = {vipUnlocked}");
     }
 
     private void Update()

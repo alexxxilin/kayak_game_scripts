@@ -106,8 +106,19 @@ public class LadderZone : MonoBehaviour
     {
         if (isVIP)
         {
-            bool vipUnlocked = YG2.saves.vipUnlocked;
-            SetVIPAccess(vipUnlocked);
+            // Проверяем инициализацию перед доступом к YG2.saves
+            if (YG2InitializationManager.CanAccessSaves())
+            {
+                bool vipUnlocked = YG2.saves.vipUnlocked;
+                SetVIPAccess(vipUnlocked);
+            }
+            else
+            {
+                // Если SDK ещё не готов, скрываем преграду по умолчанию
+                // VIP-доступ будет проверен позже через LadderZone или при покупке
+                SetVIPAccess(false);
+                Debug.LogWarning($"[LadderZone {ladderId}] YG2 SDK ещё не инициализирован, используем значение по умолчанию");
+            }
         }
         SetGatesActive(true);
     }

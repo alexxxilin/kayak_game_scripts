@@ -94,6 +94,18 @@ public class CoinShopManager : MonoBehaviour
             _playerStatsManager = statsGO.AddComponent<PlayerStatsManager>();
         }
 
+        // Ждем инициализации SDK перед настройкой магазина
+        StartCoroutine(InitializeCoinShop());
+    }
+
+    private System.Collections.IEnumerator InitializeCoinShop()
+    {
+        // Ждем пока SDK не будет инициализирован
+        while (!YG2InitializationManager.CanAccessSaves())
+        {
+            yield return null;
+        }
+
         for (int i = 0; i < coinOffers.Count; i++)
         {
             int index = i;

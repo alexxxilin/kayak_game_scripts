@@ -71,6 +71,19 @@ public class WingsSystem : MonoBehaviour
     void Start()
     {
         playerController = FindFirstObjectByType<ExampleCharacterController>();
+        
+        // Ждем инициализации SDK перед загрузкой данных крыльев
+        StartCoroutine(InitializeWingsSystem());
+    }
+
+    private System.Collections.IEnumerator InitializeWingsSystem()
+    {
+        // Ждем пока SDK не будет инициализирован
+        while (!YG2InitializationManager.CanAccessSaves())
+        {
+            yield return null;
+        }
+
         LoadWingsData();
 
         // 🔑 Инициализация первых крыльев если это новая игра
