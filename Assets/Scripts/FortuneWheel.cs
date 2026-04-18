@@ -17,16 +17,16 @@ public class FortuneWheel : MonoBehaviour
         public int maxAngle;
         public Sprite icon;
         public Color color = Color.white;
-
+        
         [Header("Настройки награды")]
         public RewardType rewardType;
         public long rewardAmount;
         public int spinsToAdd;
-
+        
         [Header("Для награды типа Pet")]
         public int shopIndex = 0;
         public bool isDonatePet = false;
-
+        
         [Header("Шанс выпадения")]
         [Range(0.1f, 100f)]
         public float dropChance = 10f;
@@ -119,10 +119,12 @@ public class FortuneWheel : MonoBehaviour
     {
         playerController = FindFirstObjectByType<ExampleCharacterController>();
         petSystem = FindFirstObjectByType<PetSystem>();
+        
         InitializeUI();
         CalculateChances();
         StartCoroutine(WaitForSaveManager());
         UpdateBuySpinButton();
+        
         YG2.onGetPayments += UpdateBuySpinButton;
     }
 
@@ -133,20 +135,22 @@ public class FortuneWheel : MonoBehaviour
         if (adSpinTimerCoroutine != null) StopCoroutine(adSpinTimerCoroutine);
     }
 
+    // ✅ ИСПРАВЛЕНО: ждем инициализацию SDK перед загрузкой данных
     private IEnumerator WaitForSaveManager()
     {
-        SaveManager saveManager = FindFirstObjectByType<SaveManager>();
-        int maxWaitFrames = 100;
-        int currentFrame = 0;
-        while ((saveManager == null || !saveManager.HasSaveData()) && currentFrame < maxWaitFrames)
+        Debug.Log("🔄 FortuneWheel: Ожидание инициализации SDK...");
+        
+        // Ждем пока SDK не будет инициализирован
+        while (!YG2InitializationManager.CanAccessSaves())
         {
-            yield return new WaitForEndOfFrame();
-            saveManager = FindFirstObjectByType<SaveManager>();
-            currentFrame++;
+            yield return null;
         }
+        
         LoadSpinsData();
         StartFreeSpinTimer();
         StartAdSpinTimer();
+        
+        Debug.Log("✅ FortuneWheel: Данные загружены после инициализации SDK");
     }
 
     private void CalculateChances()
@@ -156,6 +160,7 @@ public class FortuneWheel : MonoBehaviour
         {
             totalChance += sector.dropChance;
         }
+        
         cumulativeChances = new float[sectors.Length];
         float cumulative = 0f;
         for (int i = 0; i < sectors.Length; i++)
@@ -163,6 +168,7 @@ public class FortuneWheel : MonoBehaviour
             cumulative += sectors[i].dropChance;
             cumulativeChances[i] = cumulative;
         }
+        
         UpdateSectorChancesUI();
     }
 
@@ -214,6 +220,7 @@ public class FortuneWheel : MonoBehaviour
         {
             spinAvailableIndicator.SetActive(currentSpins > 0);
         }
+        
         if (globalFreeSpinTimerText != null)
         {
             globalFreeSpinTimerText.gameObject.SetActive(enableFreeSpins);
@@ -235,11 +242,24 @@ public class FortuneWheel : MonoBehaviour
         }
     }
 
+    // ✅ ИСПРАВЛЕНО: безопасный доступ к YG2.saves
     private void LoadSpinsData()
     {
-        currentSpins = YG2.saves?.fortuneWheelSpins ?? startSpins;
-        _freeSpinTimer = freeSpinInterval;
-        timeUntilAdSpinAvailable = YG2.saves?.timeUntilAdSpinAvailable ?? 0f;
+        if (!YG2InitializationManager.CanAccessSaves())
+        {
+            Debug.LogWarning("⚠️ FortuneWheel: YG2.saves ещё не доступен, используем значения по умолчанию");
+            currentSpins = startSpins;
+            _freeSpinTimer = freeSpinInterval;
+            timeUntilAdSpinAvailable = 0f;
+            UpdateUI();
+            UpdateGlobalUI();
+            return;
+        }
+        
+        currentSpins = YG2.saves.fortuneWheelSpins;
+        _freeSpinTimer = YG2.saves.timeUntilFreeSpin;
+        timeUntilAdSpinAvailable = YG2.saves.timeUntilAdSpinAvailable;
+        
         UpdateUI();
         UpdateGlobalUI();
         Debug.Log($"Загружено: спины = {currentSpins}. Таймер бесплатных вращений = {_freeSpinTimer} сек.");
@@ -247,7 +267,7 @@ public class FortuneWheel : MonoBehaviour
 
     private void SaveSpinsData()
     {
-        if (YG2.saves != null)
+        if (YG2InitializationManager.CanAccessSaves())
         {
             YG2.saves.fortuneWheelSpins = currentSpins;
             YG2.saves.timeUntilAdSpinAvailable = timeUntilAdSpinAvailable;
@@ -375,9 +395,10 @@ public class FortuneWheel : MonoBehaviour
         if (currentSpins <= 0) return;
         if (isSpinning) return;
         if (!isWheelOpen) return;
-
+        
         currentSpins--;
         SaveSpinsData();
+        
         WheelSector winningSector = GetRandomSectorByChance();
         ProcessWin(winningSector);
         StartCoroutine(SpinWheelVisual(winningSector));
@@ -408,14 +429,14 @@ public class FortuneWheel : MonoBehaviour
         adSpinButton.interactable = false;
         buySpin10DonateButton.interactable = false;
         closeButton.interactable = false;
-
+        
         float sectorCenter = (winningSector.minAngle + winningSector.maxAngle) / 2f;
         float targetAngle = (90f - sectorCenter + 360f) % 360f;
         int totalSpins = Random.Range(minSpins, maxSpins + 1);
         float targetRotation = 360f * totalSpins + targetAngle;
         float startRotation = wheelImage.transform.eulerAngles.z;
         float elapsedTime = 0f;
-
+        
         while (elapsedTime < spinDuration)
         {
             elapsedTime += Time.deltaTime;
@@ -425,11 +446,11 @@ public class FortuneWheel : MonoBehaviour
             wheelImage.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
             yield return null;
         }
-
+        
         wheelImage.transform.rotation = Quaternion.Euler(0, 0, targetRotation);
         yield return new WaitForSeconds(0.5f);
         ShowRewardPanelForSector(winningSector);
-
+        
         isSpinning = false;
         adSpinButton.interactable = true;
         buySpin10DonateButton.interactable = true;
@@ -485,7 +506,7 @@ public class FortuneWheel : MonoBehaviour
         string rewardMessage = "";
         Sprite rewardSprite = sector.icon;
         bool showPanel = true;
-
+        
         switch (sector.rewardType)
         {
             case RewardType.Coins:
@@ -502,7 +523,7 @@ public class FortuneWheel : MonoBehaviour
                 rewardMessage = "НОВЫЙ ПИТОМЕЦ!";
                 break;
         }
-
+        
         if (showPanel)
             ShowRewardPanel(rewardMessage, rewardSprite);
     }
@@ -532,10 +553,12 @@ public class FortuneWheel : MonoBehaviour
     {
         bool isAdReady = timeUntilAdSpinAvailable <= 0;
         bool canInteract = isAdReady && !isSpinning;
+        
         if (adSpinButton != null)
         {
             adSpinButton.interactable = canInteract;
         }
+        
         if (adSpinTimerText != null)
         {
             if (isAdReady)
@@ -550,6 +573,7 @@ public class FortuneWheel : MonoBehaviour
                 adSpinTimerText.color = Color.red;
             }
         }
+        
         if (adSpinAvailableText != null)
         {
             adSpinAvailableText.gameObject.SetActive(isAdReady);
@@ -559,6 +583,7 @@ public class FortuneWheel : MonoBehaviour
     private void UpdateUI()
     {
         if (!isWheelOpen) return;
+        
         if (spinsCountText != null)
         {
             spinsCountText.text = $"{currentSpins}";
@@ -630,7 +655,7 @@ public class FortuneWheel : MonoBehaviour
     }
 
     public void AddSpinsFromExternal(int amount) => AddSpins(amount);
-
+    
     public void ResetSpins()
     {
         currentSpins = startSpins;
@@ -643,23 +668,28 @@ public class FortuneWheel : MonoBehaviour
 
     public bool IsWheelOpen() => isWheelOpen;
     public int GetCurrentSpins() => currentSpins;
+    
     public void SetSpins(int spins)
     {
         currentSpins = spins;
         UpdateUI();
         UpdateGlobalUI();
     }
+
     public float GetTimeUntilFreeSpin() => _freeSpinTimer;
+    
     public void SetTimeUntilFreeSpin(float time)
     {
         _freeSpinTimer = time;
         UpdateFreeSpinTimerUI();
         UpdateGlobalUI();
     }
+
     public void UpdateSpinCounterText(int spins)
     {
         if (spinsCountText != null) spinsCountText.text = $"{spins}";
     }
+
     public void UpdateSpinTimerText(float timer)
     {
         if (freeSpinsTimerText != null)

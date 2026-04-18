@@ -14,7 +14,6 @@ public class WingLevel
     public float speedMultiplier = 1.5f;
     public Sprite icon;
     public GameObject wing3DModel;
-
     [Tooltip("ID лестницы, на которой крылья дают ускорение. Крылья работают ТОЛЬКО на своей локации (точное совпадение ID).")]
     public int requiredLadderId = 0;
 }
@@ -28,25 +27,18 @@ public class WingsSystem : MonoBehaviour
     public GameObject shopPanel;
     public Transform offersContainer;
     public GameObject offerPrefab;
-    
     [Tooltip("Префаб пустого слота-разделителя (опционально, если не назначен — создаётся программно)")]
     public GameObject emptySlotPrefab;
-
     [Tooltip("Индексы крыльев, ПОСЛЕ которых добавляются пустые слоты-разделители (по умолчанию: после 11-го и 22-го)")]
     [SerializeField] private List<int> dividerAfterWingIndices = new List<int> { 10, 21 };
-    
     [Tooltip("Количество пустых слотов-разделителей в каждой группе")]
     [Range(1, 10)]
     public int emptySlotsCount = 4;
-
     public Button actionButton;
     public TMP_Text actionButtonText;
-
     public Image selectedWingIcon;
     public TMP_Text selectedWingPowerText;
-
     public Image buyModeIndicator;
-
     public Button closeShopButton;
 
     [Header("Слот экипировки")]
@@ -71,21 +63,23 @@ public class WingsSystem : MonoBehaviour
     void Start()
     {
         playerController = FindFirstObjectByType<ExampleCharacterController>();
-        
-        // Ждем инициализации SDK перед загрузкой данных крыльев
+        // ✅ ИСПРАВЛЕНО: ждем инициализацию SDK перед загрузкой данных
         StartCoroutine(InitializeWingsSystem());
     }
 
+    // ✅ ИСПРАВЛЕНО: безопасная инициализация с ожиданием SDK
     private System.Collections.IEnumerator InitializeWingsSystem()
     {
+        Debug.Log("🔄 WingsSystem: Ожидание инициализации SDK...");
+        
         // Ждем пока SDK не будет инициализирован
         while (!YG2InitializationManager.CanAccessSaves())
         {
             yield return null;
         }
-
+        
         LoadWingsData();
-
+        
         // 🔑 Инициализация первых крыльев если это новая игра
         if (purchasedWingIndex < 0 && wingLevels.Count > 0)
         {
@@ -94,18 +88,18 @@ public class WingsSystem : MonoBehaviour
             selectedWingIndex = 0;
             SaveWingsData();
         }
-
+        
         if (closeShopButton != null)
             closeShopButton.onClick.AddListener(CloseShop);
-
         if (actionButton != null)
             actionButton.onClick.AddListener(OnActionButtonClicked);
-
+        
         SetupTriggers();
         UpdateShopUI();
         ApplyEquippedWings();
-        
         UpdateIncompatibleWingsText(false);
+        
+        Debug.Log("✅ WingsSystem: Инициализация завершена");
     }
 
     void SetupTriggers()
@@ -153,16 +147,15 @@ public class WingsSystem : MonoBehaviour
     void UpdateShopUI()
     {
         if (offersContainer == null || offerPrefab == null) return;
-
+        
         // Очищаем старые элементы
         foreach (Transform child in offersContainer)
             Destroy(child.gameObject);
-
+        
         // 🔹 Рендерим крылья и вставляем пустые слоты после указанных индексов
         for (int i = 0; i < wingLevels.Count; i++)
         {
             if (wingLevels[i] == null) continue;
-
             var offer = Instantiate(offerPrefab, offersContainer);
             SetupWingOffer(offer, i);
             
@@ -172,7 +165,7 @@ public class WingsSystem : MonoBehaviour
                 AddEmptyDividerSlots();
             }
         }
-
+        
         UpdateActionUI();
         UpdateSelectedWingDisplay();
     }
@@ -185,18 +178,18 @@ public class WingsSystem : MonoBehaviour
         var iconImage = FindComponentOnChildWithName<Image>(offer.transform, "WingIcon");
         var lockedOverlay = FindComponentOnChildWithName<Image>(offer.transform, "LockedOverlay");
         var selectedOverlay = FindComponentOnChildWithName<Image>(offer.transform, "SelectedOverlay");
-
+        
         if (iconImage != null && wingLevels[wingIndex].icon != null)
             iconImage.sprite = wingLevels[wingIndex].icon;
-
+        
         bool isUnlocked = CanBuyWing(wingIndex) || wingIndex <= purchasedWingIndex;
         if (lockedOverlay != null)
             lockedOverlay.gameObject.SetActive(!isUnlocked);
-
+        
         bool isSelected = wingIndex == selectedWingIndex;
         if (selectedOverlay != null)
             selectedOverlay.gameObject.SetActive(isSelected);
-
+        
         var button = offer.GetComponent<Button>();
         if (button == null)
             button = offer.gameObject.AddComponent<Button>();
@@ -220,7 +213,6 @@ public class WingsSystem : MonoBehaviour
         for (int i = 0; i < emptySlotsCount; i++)
         {
             GameObject emptySlot;
-            
             if (emptySlotPrefab != null)
             {
                 // Используем назначенный префаб, если есть
@@ -236,11 +228,11 @@ public class WingsSystem : MonoBehaviour
                 var rectTransform = emptySlot.AddComponent<RectTransform>();
                 rectTransform.anchorMin = Vector2.zero;
                 rectTransform.anchorMax = Vector2.zero;
-                rectTransform.sizeDelta = new Vector2(100, 100); // Подстройте под размер вашей сетки
+                rectTransform.sizeDelta = new Vector2(100, 100);
                 
                 // Добавляем фоновую панель (полностью прозрачная)
                 var image = emptySlot.AddComponent<Image>();
-                image.color = new Color(1f, 1f, 1f, 0f); // ✅ Изменено на 0 (полная прозрачность)
+                image.color = new Color(1f, 1f, 1f, 0f);
                 image.raycastTarget = false;
             }
             
@@ -264,7 +256,6 @@ public class WingsSystem : MonoBehaviour
     {
         if (index < 0 || index >= wingLevels.Count) return;
         if (!CanBuyWing(index) && index > purchasedWingIndex) return;
-
         selectedWingIndex = index;
         UpdateShopUI();
     }
@@ -272,7 +263,7 @@ public class WingsSystem : MonoBehaviour
     void OnActionButtonClicked()
     {
         if (selectedWingIndex < 0 || selectedWingIndex >= wingLevels.Count) return;
-
+        
         if (selectedWingIndex <= purchasedWingIndex)
         {
             // 🔑 Нельзя снять крылья — только переключить на другие
@@ -302,9 +293,8 @@ public class WingsSystem : MonoBehaviour
     {
         if (!CanBuyWing(index)) return;
         if (playerController == null) return;
-        
         if (playerController.CoinsCollected < wingLevels[index].price) return;
-
+        
         playerController.SpendCoins(wingLevels[index].price);
         purchasedWingIndex = index;
         EquipWing(index);
@@ -344,10 +334,10 @@ public class WingsSystem : MonoBehaviour
             Destroy(currentWingObject);
             currentWingObject = null;
         }
-
+        
         float multiplier = 1f;
         bool wingsAreIncompatible = false;
-
+        
         if (playerController != null && playerController.CurrentCharacterState == CharacterState.Climbing)
         {
             var currentLadder = playerController.CurrentLadder as LadderZone;
@@ -359,7 +349,7 @@ public class WingsSystem : MonoBehaviour
                     SaveWingsData();
                     return;
                 }
-
+                
                 var wing = wingLevels[equippedWingIndex];
                 if (wing.requiredLadderId == currentLadder.LadderId)
                 {
@@ -371,7 +361,7 @@ public class WingsSystem : MonoBehaviour
                     multiplier = 1f;
                     wingsAreIncompatible = true;
                 }
-
+                
                 if (wingSlot != null && wing.wing3DModel != null)
                 {
                     currentWingObject = Instantiate(
@@ -386,7 +376,7 @@ public class WingsSystem : MonoBehaviour
         else if (equippedWingIndex >= 0 && equippedWingIndex < wingLevels.Count && wingSlot != null && wingLevels[equippedWingIndex].wing3DModel != null)
         {
             if (wingLevels[equippedWingIndex] == null) return;
-
+            
             currentWingObject = Instantiate(
                 wingLevels[equippedWingIndex].wing3DModel,
                 wingSlot.position,
@@ -396,19 +386,19 @@ public class WingsSystem : MonoBehaviour
             multiplier = 1f;
             wingsAreIncompatible = false;
         }
-
+        
         if (playerController != null)
         {
             playerController.SetWingsSpeedMultiplier(multiplier);
         }
-
+        
         UpdateIncompatibleWingsText(wingsAreIncompatible);
     }
 
     public void OnLadderChanged(LadderZone newLadder)
     {
         bool wingsAreIncompatible = false;
-
+        
         if (newLadder != null && equippedWingIndex >= 0 && equippedWingIndex < wingLevels.Count)
         {
             if (wingLevels[equippedWingIndex] == null)
@@ -418,11 +408,11 @@ public class WingsSystem : MonoBehaviour
                 UpdateIncompatibleWingsText(false);
                 return;
             }
-
+            
             var wing = wingLevels[equippedWingIndex];
             wingsAreIncompatible = (wing.requiredLadderId != newLadder.LadderId);
         }
-
+        
         UpdateIncompatibleWingsText(wingsAreIncompatible);
     }
 
@@ -437,33 +427,32 @@ public class WingsSystem : MonoBehaviour
             }
             return;
         }
-
+        
         incompatibleWingsText.gameObject.SetActive(show);
         if (show)
         {
-            incompatibleWingsText.text = YG2.lang == "en" 
-                ? "The boat doesn't fit the ladder!" 
+            incompatibleWingsText.text = YG2.lang == "en"
+                ? "The boat doesn't fit the ladder!"
                 : "Лодка не соответствует лестнице!";
         }
     }
+
     private bool _debugNullTextLogged = false;
 
     void UpdateActionUI()
     {
         bool isValidSelection = selectedWingIndex >= 0 && selectedWingIndex < wingLevels.Count;
-
+        
         if (actionButton != null)
             actionButton.gameObject.SetActive(isValidSelection);
-
         if (buyModeIndicator != null)
             buyModeIndicator.gameObject.SetActive(false);
-
         if (!isValidSelection) return;
-
+        
         string buttonText = "";
         bool interactable = true;
         bool isBuyMode = false;
-
+        
         // 🔑 Изменено: вместо "Снять" теперь "Надето" (кнопка неактивна)
         if (selectedWingIndex == equippedWingIndex)
         {
@@ -492,13 +481,11 @@ public class WingsSystem : MonoBehaviour
             buttonText = YG2.lang == "en" ? "Unavailable" : "Недоступно";
             interactable = false;
         }
-
+        
         if (actionButtonText != null)
             actionButtonText.text = buttonText;
-
         if (actionButton != null)
             actionButton.interactable = interactable;
-
         if (buyModeIndicator != null)
             buyModeIndicator.gameObject.SetActive(isBuyMode);
     }
@@ -506,24 +493,21 @@ public class WingsSystem : MonoBehaviour
     void UpdateSelectedWingDisplay()
     {
         bool isValidSelection = selectedWingIndex >= 0 && selectedWingIndex < wingLevels.Count;
-
+        
         if (selectedWingIcon != null)
             selectedWingIcon.gameObject.SetActive(isValidSelection);
-
         if (selectedWingPowerText != null)
             selectedWingPowerText.gameObject.SetActive(isValidSelection);
-
         if (!isValidSelection) return;
-
+        
         if (wingLevels[selectedWingIndex] == null) return;
-
+        
         var wing = wingLevels[selectedWingIndex];
         if (selectedWingIcon != null)
         {
             selectedWingIcon.sprite = wing.icon;
             selectedWingIcon.gameObject.SetActive(wing.icon != null);
         }
-
         if (selectedWingPowerText != null)
         {
             selectedWingPowerText.text = $"×{wing.speedMultiplier:F1}";
@@ -544,17 +528,29 @@ public class WingsSystem : MonoBehaviour
             return ((long)number).ToString();
     }
 
+    // ✅ ИСПРАВЛЕНО: безопасное сохранение с проверкой SDK
     void SaveWingsData()
     {
-        if (YG2.saves == null) return;
-        YG2.saves.purchasedWingIndex = purchasedWingIndex;
-        YG2.saves.equippedWingIndex = equippedWingIndex;
-        YG2.SaveProgress();
+        if (YG2InitializationManager.CanAccessSaves())
+        {
+            YG2.saves.purchasedWingIndex = purchasedWingIndex;
+            YG2.saves.equippedWingIndex = equippedWingIndex;
+            YG2.SaveProgress();
+        }
     }
 
+    // ✅ ИСПРАВЛЕНО: безопасная загрузка с проверкой SDK
     void LoadWingsData()
     {
-        if (YG2.saves == null) return;
+        if (!YG2InitializationManager.CanAccessSaves())
+        {
+            Debug.LogWarning("⚠️ WingsSystem: YG2.saves не доступен, используем значения по умолчанию");
+            purchasedWingIndex = 0;
+            equippedWingIndex = 0;
+            selectedWingIndex = 0;
+            return;
+        }
+        
         purchasedWingIndex = YG2.saves.purchasedWingIndex;
         equippedWingIndex = YG2.saves.equippedWingIndex;
         selectedWingIndex = equippedWingIndex;
@@ -562,8 +558,8 @@ public class WingsSystem : MonoBehaviour
 
     public void OnPlayerEnter() => OpenShop();
     public void OnPlayerExit() => CloseShop();
-    
-    #if UNITY_EDITOR
+
+#if UNITY_EDITOR
     [ContextMenu("Сбросить разделители к значениям по умолчанию")]
     private void ResetDividerIndices()
     {
@@ -571,26 +567,26 @@ public class WingsSystem : MonoBehaviour
         UnityEditor.EditorUtility.SetDirty(this);
         Debug.Log("[WingsSystem] Разделители сброшены: после 11-го и 22-го крыла");
     }
-    #endif
+#endif
 }
 
 public class WingsShopTrigger : MonoBehaviour
 {
     private WingsSystem wingsSystem;
-
+    
     public void Initialize(WingsSystem system)
     {
         wingsSystem = system;
         var col = GetComponent<Collider>();
         if (col != null) col.isTrigger = true;
     }
-
+    
     void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Player"))
             wingsSystem.OnPlayerEnter();
     }
-
+    
     void OnTriggerExit(Collider other)
     {
         if (other.CompareTag("Player"))

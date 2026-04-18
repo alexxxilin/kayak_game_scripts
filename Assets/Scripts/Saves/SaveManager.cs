@@ -16,10 +16,8 @@ public class SaveManager : MonoBehaviour
     private PetSystem petSystem;
     private AutoInterstitialAd autoInterstitialAd;
     private PlayerStatsManager _playerStatsManager;
-
     private bool isDataLoaded = false;
     private float autoSaveTimer = 0f;
-
     private bool _isSaving = false;
     private int _pendingSaveRequests = 0;
 
@@ -27,14 +25,14 @@ public class SaveManager : MonoBehaviour
     {
         if (YG2.saves == null)
             YG2.saves = new SavesYG();
-
+        
         playerController = FindFirstObjectByType<KinematicCharacterController.Examples.ExampleCharacterController>();
         fortuneWheel = FindFirstObjectByType<FortuneWheel>();
         worldSystemManager = FindFirstObjectByType<WorldSystemManager>();
         petSystem = FindFirstObjectByType<PetSystem>();
         autoInterstitialAd = FindFirstObjectByType<AutoInterstitialAd>();
         _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
-
+        
         isDataLoaded = false;
         Debug.Log("✅ SaveManager: инициализация в Awake, данные ещё не загружены");
     }
@@ -42,7 +40,6 @@ public class SaveManager : MonoBehaviour
     private void Start()
     {
         YG2.onGetSDKData += OnSDKDataLoaded;
-
         if (YG2.isSDKEnabled)
         {
             OnSDKDataLoaded();
@@ -51,7 +48,6 @@ public class SaveManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        // Исправлено: onGetSDKData, а не onGetSDData
         YG2.onGetSDKData -= OnSDKDataLoaded;
     }
 
@@ -59,23 +55,23 @@ public class SaveManager : MonoBehaviour
     {
         ApplySaveData();
         isDataLoaded = true;
-
+        
         fortuneWheel?.OnGameLoad();
         petSystem?.OnGameLoad();
         worldSystemManager?.UpdateTeleportUIPanelsVisibility();
-
+        
         if (playerController != null && worldSystemManager != null && isDataLoaded)
         {
             worldSystemManager.TeleportToLocation(YG2.saves.currentLocationID);
         }
-
+        
         Debug.Log("✅ SaveManager: данные применены после загрузки SDK");
     }
 
     private void Update()
     {
         if (!isDataLoaded) return;
-
+        
         if (enableAutoSave)
         {
             autoSaveTimer += Time.deltaTime;
@@ -85,7 +81,7 @@ public class SaveManager : MonoBehaviour
                 autoSaveTimer = 0f;
             }
         }
-
+        
         if (YG2.saves != null)
         {
             YG2.saves.totalPlayTime += Time.deltaTime;
@@ -116,9 +112,9 @@ public class SaveManager : MonoBehaviour
     public void RequestSave(string reason = "unknown", bool immediate = false)
     {
         if (!isDataLoaded) return;
-
+        
         Debug.Log($"💾 Запрос на сохранение: {reason} (immediate={immediate})");
-
+        
         if (immediate)
         {
             PerformSave(reason);
@@ -136,7 +132,6 @@ public class SaveManager : MonoBehaviour
     private IEnumerator DelayedSave()
     {
         yield return new WaitForSeconds(1f);
-
         if (_pendingSaveRequests > 0)
         {
             PerformSave("delayed");
@@ -156,7 +151,7 @@ public class SaveManager : MonoBehaviour
             Debug.Log("⚠️ Сохранение уже выполняется, пропускаем");
             return;
         }
-
+        
         _isSaving = true;
         UpdateSaveData();
         YG2.SaveProgress();
@@ -167,28 +162,28 @@ public class SaveManager : MonoBehaviour
     private void UpdateSaveData()
     {
         if (YG2.saves == null) return;
-
+        
         YG2.saves.lastSaveTimeUnix = (float)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
-
+        
         if (playerController != null)
         {
             YG2.saves.coinsCollected = playerController.CoinsCollected;
             YG2.saves.silverCoins = playerController.SilverCoins;
             YG2.saves.cursorLocked = playerController.cursorLocked;
         }
-
+        
         if (fortuneWheel != null)
         {
             YG2.saves.fortuneWheelSpins = fortuneWheel.GetCurrentSpins();
             YG2.saves.timeUntilAdSpinAvailable = fortuneWheel.TimeUntilAdSpinAvailable;
         }
-
+        
         if (worldSystemManager != null)
         {
             YG2.saves.currentLocationID = worldSystemManager.CurrentLocationID;
             YG2.saves.maxAchievedVirtualHeight = worldSystemManager.GetMaxAchievedVirtualHeight();
             YG2.saves.trophiesCollected = worldSystemManager.TrophiesCollected;
-
+            
             YG2.saves.purchasedTeleportTriggers.Clear();
             foreach (var teleport in worldSystemManager.TeleportTriggers)
             {
@@ -197,29 +192,29 @@ public class SaveManager : MonoBehaviour
                     YG2.saves.purchasedTeleportTriggers.Add(teleport.TriggerID);
                 }
             }
-
+            
             YG2.saves.teleportPanelUnlocked.Clear();
             foreach (var panel in worldSystemManager.TeleportUIPanels)
             {
                 YG2.saves.teleportPanelUnlocked.Add(panel.WasUnlocked);
             }
         }
-
+        
         if (petSystem != null)
         {
             petSystem.SavePetsData();
         }
-
+        
         if (autoInterstitialAd != null)
         {
             YG2.saves.adsDisabled = autoInterstitialAd.IsAdsDisabled();
         }
-
+        
         if (LeaderboardManager.Instance != null)
         {
             YG2.saves.ladderCompletionCount = LeaderboardManager.Instance.GetLadderCompletionCount();
         }
-
+        
         if (_playerStatsManager != null && playerController != null)
         {
             _playerStatsManager.SetRegularCoins((long)playerController.CoinsCollected);
@@ -230,7 +225,7 @@ public class SaveManager : MonoBehaviour
     private void ApplySaveData()
     {
         if (YG2.saves == null) return;
-
+        
         if (_playerStatsManager != null)
         {
             long statsCoins = _playerStatsManager.GetRegularCoins();
@@ -239,7 +234,7 @@ public class SaveManager : MonoBehaviour
                 Debug.Log($"💰 SaveManager: восстанавливаем монеты из Player Stats: {statsCoins}");
                 YG2.saves.coinsCollected = statsCoins;
             }
-
+            
             int statsSilver = _playerStatsManager.GetSilverCoins();
             if (statsSilver > 0 && (playerController == null || playerController.SilverCoins < statsSilver))
             {
@@ -247,24 +242,24 @@ public class SaveManager : MonoBehaviour
                 YG2.saves.silverCoins = statsSilver;
             }
         }
-
+        
         if (playerController != null)
         {
             playerController.SetCoins(YG2.saves.coinsCollected);
             playerController.SetSilverCoins(YG2.saves.silverCoins);
             playerController.SetCursorLocked(YG2.saves.cursorLocked);
         }
-
+        
         if (fortuneWheel != null)
         {
             fortuneWheel.SetSpins(YG2.saves.fortuneWheelSpins);
             fortuneWheel.TimeUntilAdSpinAvailable = YG2.saves.timeUntilAdSpinAvailable;
         }
-
+        
         if (worldSystemManager != null)
         {
             worldSystemManager.TrophiesCollected = YG2.saves.trophiesCollected;
-
+            
             foreach (var teleport in worldSystemManager.TeleportTriggers)
             {
                 if (!string.IsNullOrEmpty(teleport.TriggerID))
@@ -272,17 +267,17 @@ public class SaveManager : MonoBehaviour
                     teleport.WasBought = YG2.saves.purchasedTeleportTriggers.Contains(teleport.TriggerID);
                 }
             }
-
+            
             var panels = worldSystemManager.TeleportUIPanels;
             var savedStates = YG2.saves.teleportPanelUnlocked;
             for (int i = 0; i < panels.Count && i < savedStates.Count; i++)
             {
                 panels[i].WasUnlocked = savedStates[i];
             }
-
+            
             worldSystemManager.CurrentLocationID = YG2.saves.currentLocationID;
         }
-
+        
         if (LeaderboardManager.Instance != null)
         {
             LeaderboardManager.Instance.SetLadderCompletionCount(YG2.saves.ladderCompletionCount);
@@ -299,9 +294,9 @@ public class SaveManager : MonoBehaviour
     public void ResetSaveData()
     {
         Debug.Log("🔄 Начинаем полный сброс ВСЕХ сохранений (включая донатные покупки)...");
-
+        
         YG2.SetDefaultSaves();
-
+        
         if (_playerStatsManager != null)
         {
             _playerStatsManager.ResetAllDonatePurchases();
@@ -323,10 +318,9 @@ public class SaveManager : MonoBehaviour
                 Destroy(tempStats);
             }
         }
-
+        
         YG2.SaveProgress();
         ApplySaveData();
-
         Debug.Log("🎉 Полный сброс всех сохранений выполнен!");
     }
 

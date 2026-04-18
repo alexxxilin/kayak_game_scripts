@@ -28,8 +28,6 @@ public class YG2InitializationManager : MonoBehaviour
     /// </summary>
     public event Action OnSDKReady;
 
-    private bool _isInitializing = false;
-
     private void Awake()
     {
         // Синглтон
@@ -44,7 +42,6 @@ public class YG2InitializationManager : MonoBehaviour
             return;
         }
 
-        _isInitializing = true;
         StartCoroutine(InitializeSDK());
     }
 
@@ -54,7 +51,7 @@ public class YG2InitializationManager : MonoBehaviour
 
         float waitTime = 0f;
 
-        // Ждем пока SDK не будет включен
+        // ✅ ИСПРАВЛЕНО: используем YG2.isSDKEnabled согласно документации
         while (!YG2.isSDKEnabled && waitTime < maxInitializationTime)
         {
             yield return new WaitForSeconds(0.1f);
@@ -70,7 +67,7 @@ public class YG2InitializationManager : MonoBehaviour
         }
 
         Debug.Log("✅ YG2InitializationManager: SDK включен, ожидаем загрузку данных...");
-
+        
         // Дополнительная задержка для полной загрузки данных
         yield return new WaitForSeconds(postInitDelay);
 

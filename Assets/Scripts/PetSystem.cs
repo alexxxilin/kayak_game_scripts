@@ -451,6 +451,7 @@ public class PetSystem : MonoBehaviour
         YG2.BuyPayments(productId);
     }
 
+    // 🔥 ИЗМЕНЁННЫЙ МЕТОД: Покупка донатного питомца за серебряные монеты с метриками
     private void BuyDonatePetWithSilver(int petIndex)
     {
         if (petIndex < 0 || petIndex >= silverPetPrices.Count) return;
@@ -473,6 +474,9 @@ public class PetSystem : MonoBehaviour
             
             return;
         }
+
+        // 🔥 МЕТРИКА: потрачены серебряные монеты на донатное яйцо
+        GameMetrics.SendSilverSpent(price, "donate_egg", -1, petIndex);
 
         // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ СЕРЕБРЯНЫХ МОНЕТ
         if (_playerStatsManager != null)
@@ -526,6 +530,27 @@ public class PetSystem : MonoBehaviour
         {
             _playerStatsManager.SetDonatePetPurchased(petIndex, donateShopIndex);
         }
+        
+        // 🔥 МЕТРИКА: какой питомец выпал из донатного яйца (КЛЮЧЕВОЕ ДЛЯ ВАШЕГО ЗАПРОСА)
+        GameMetrics.SendDonateEggOpened(
+            donateShopIndex,
+            petIndex,
+            GameMetrics.GetSafePetName(multiplierEntry.petName),
+            multiplierEntry.rocketMultiplier,
+            price
+        );
+        
+        // 🔥 МЕТРИКА: общая информация о покупке питомца
+        GameMetrics.SendPetPurchased(
+            donateShopIndex,
+            petIndex,
+            GameMetrics.GetSafePetName(multiplierEntry.petName),
+            "silver_coins",
+            price,
+            true,
+            multiplierEntry.rocketMultiplier,
+            "egg"
+        );
         
         SavePetsData();
         UpdatePetsListUI();
@@ -597,6 +622,18 @@ public class PetSystem : MonoBehaviour
         {
             _playerStatsManager.SetDonatePetPurchased(petIndex, donateShopIndex);
         }
+        
+        // 🔥 МЕТРИКА: покупка донатного питомца за рубли
+        GameMetrics.SendPetPurchased(
+            donateShopIndex,
+            petIndex,
+            GameMetrics.GetSafePetName(multiplierEntry.petName),
+            "rubles",
+            0,
+            true,
+            multiplierEntry.rocketMultiplier,
+            "egg"
+        );
         
         SavePetsData();
         UpdatePetsListUI();
@@ -1045,7 +1082,7 @@ public class PetSystem : MonoBehaviour
         }
     }
 
-    // 🔥 ОБНОВЛЁННЫЙ МЕТОД: Покупка питомца с поддержкой серебряных монет
+    // 🔥 ОБНОВЛЁННЫЙ МЕТОД: Покупка питомца с поддержкой серебряных монет и метриками
     public void BuyPet(int shopIndex)
     {
         if (!isInShopArea || shopIndex < 0 || shopIndex >= petShops.Count) return;
@@ -1091,7 +1128,7 @@ public class PetSystem : MonoBehaviour
             _playerStatsManager.SetRegularCoins((long)playerController.CoinsCollected);
         }
         
-        CompletePetPurchase(shopIndex);
+        CompletePetPurchase(shopIndex, "regular_coins", (int)currentShop.petPrice);
     }
 
     // 🔥 НОВЫЙ МЕТОД: Покупка питомца за серебряные монеты
@@ -1112,6 +1149,9 @@ public class PetSystem : MonoBehaviour
             return;
         }
 
+        // 🔥 МЕТРИКА: потрачены серебряные монеты на обычного питомца
+        GameMetrics.SendSilverSpent(silverPrice, "regular_pet_purchase", shopIndex);
+
         // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ потраченных серебряных монет
         if (_playerStatsManager != null)
         {
@@ -1119,11 +1159,11 @@ public class PetSystem : MonoBehaviour
         }
 
         // Завершаем покупку
-        CompletePetPurchase(shopIndex);
+        CompletePetPurchase(shopIndex, "silver_coins", silverPrice);
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Завершение покупки питомца (общая логика)
-    private void CompletePetPurchase(int shopIndex)
+    // 🔥 НОВЫЙ МЕТОД: Завершение покупки питомца с метриками
+    private void CompletePetPurchase(int shopIndex, string currencyType, int cost)
     {
         // Проверка лимита инвентаря
         int nonDonateCount = 0;
@@ -1164,6 +1204,26 @@ public class PetSystem : MonoBehaviour
         UpdatePetCounter();
         ShowPurchaseSuccess(currentShop, newPetIndex);
         SelectPetInInventory(ownedPets.Count - 1);
+
+        // 🔥 МЕТРИКА: питомец получен (отправляем только если это не донатное яйцо)
+        // Для донатных яиц метрика отправляется в BuyDonatePetWithSilver
+        if (!currentShop.isDonateShop)
+        {
+            string petName = petMultiplier?.petName ?? $"Pet_{newPetIndex}";
+            float multiplier = petMultiplier?.rocketMultiplier ?? 1f;
+            bool isDonate = petMultiplier?.isDonatePet ?? false;
+            
+            GameMetrics.SendPetPurchased(
+                shopIndex,
+                newPetIndex,
+                GameMetrics.GetSafePetName(petName),
+                currencyType,
+                cost,
+                isDonate,
+                multiplier,
+                "direct"
+            );
+        }
 
         if (autoEquipToggle != null && autoEquipToggle.isOn)
         {

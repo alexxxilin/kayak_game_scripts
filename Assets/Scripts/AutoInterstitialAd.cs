@@ -11,19 +11,19 @@ public class AutoInterstitialAd : MonoBehaviour
     [Header("UI таймера")]
     public GameObject adCountdownPanel;
     public TextMeshProUGUI countdownText;
-
+    
     [Header("Кнопка отключения рекламы")]
     public Button disableAdsButton;
     public TextMeshProUGUI disableAdsButtonText;
-
+    
     [Header("Ads Disabled Marker")]
     public GameObject adsDisabledMarker;
-
+    
     [Header("Панель получения")]
     public GameObject receivedPanel;
     public Image receivedPanelImage;
     public Sprite adsDisabledSprite;
-
+    
     [Header("Настройки")]
     public float countdownDuration = 2f;
     public float minInterval = 60f;
@@ -45,7 +45,7 @@ public class AutoInterstitialAd : MonoBehaviour
         _characterController = FindFirstObjectByType<ExampleCharacterController>();
         _saveManager = FindFirstObjectByType<SaveManager>();
         _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
-
+        
         // Если нет в сцене, создаем
         if (_playerStatsManager == null)
         {
@@ -56,7 +56,7 @@ public class AutoInterstitialAd : MonoBehaviour
         YG2.onPurchaseSuccess += OnPurchaseSuccess;
         YG2.onGetPayments += OnPaymentsLoaded;
         YG2.onGetSDKData += OnSDKDataLoaded;
-
+        
         if (disableAdsButton != null)
             disableAdsButton.onClick.AddListener(OnDisableAdsButtonClick);
 
@@ -67,15 +67,17 @@ public class AutoInterstitialAd : MonoBehaviour
             receivedPanel.SetActive(false);
     }
 
+    // ✅ ИСПРАВЛЕНО: ждем инициализацию SDK через YG2InitializationManager
     private IEnumerator InitializeAfterSDK()
     {
-        while (!YG2.isSDKEnabled)
+        Debug.Log("🔄 AutoInterstitialAd: Ожидание инициализации SDK...");
+        
+        while (!YG2InitializationManager.CanAccessSaves())
         {
-            yield return new WaitForSeconds(0.1f);
+            yield return null;
         }
-
+        
         yield return new WaitForSeconds(0.5f);
-
         RestoreAdsDisabledState();
         _isInitialized = true;
         Debug.Log("✅ AutoInterstitialAd: инициализация завершена");
@@ -84,13 +86,21 @@ public class AutoInterstitialAd : MonoBehaviour
     private void OnSDKDataLoaded()
     {
         Debug.Log("📦 AutoInterstitialAd: получены новые данные из SDK");
-        RestoreAdsDisabledState();
+        if (YG2InitializationManager.CanAccessSaves())
+        {
+            RestoreAdsDisabledState();
+        }
     }
 
+    // ✅ ИСПРАВЛЕНО: безопасный доступ к YG2.saves
     private void RestoreAdsDisabledState()
     {
-        if (YG2.saves == null) return;
-
+        if (!YG2InitializationManager.CanAccessSaves())
+        {
+            Debug.LogWarning("⚠️ AutoInterstitialAd: YG2.saves ещё не доступен");
+            return;
+        }
+        
         bool adsDisabled = YG2.saves.adsDisabled;
         
         // 🔥 Также проверяем Player Stats
@@ -98,12 +108,12 @@ public class AutoInterstitialAd : MonoBehaviour
         {
             adsDisabled = true;
         }
-
+        
         Debug.Log($"🔍 Восстановление состояния рекламы: adsDisabled = {adsDisabled}");
-
+        
         if (adsDisabledMarker != null)
             adsDisabledMarker.SetActive(adsDisabled);
-
+        
         if (disableAdsButton != null)
         {
             disableAdsButton.gameObject.SetActive(!adsDisabled);
@@ -121,7 +131,7 @@ public class AutoInterstitialAd : MonoBehaviour
         ApplyAdsDisabled();
         ShowReceivedPanel();
         
-        if (YG2.saves != null)
+        if (YG2InitializationManager.CanAccessSaves())
         {
             YG2.saves.adsDisabled = true;
             if (_saveManager != null)
@@ -135,7 +145,6 @@ public class AutoInterstitialAd : MonoBehaviour
     {
         if (adsDisabledMarker != null)
             adsDisabledMarker.SetActive(true);
-
         if (disableAdsButton != null)
             disableAdsButton.gameObject.SetActive(false);
     }
@@ -145,15 +154,12 @@ public class AutoInterstitialAd : MonoBehaviour
         if (receivedPanel != null)
         {
             receivedPanel.SetActive(true);
-            
             if (receivedPanelImage != null && adsDisabledSprite != null)
             {
                 receivedPanelImage.sprite = adsDisabledSprite;
             }
-            
             if (_hideReceivedPanelCoroutine != null)
                 StopCoroutine(_hideReceivedPanelCoroutine);
-            
             _hideReceivedPanelCoroutine = StartCoroutine(HideReceivedPanelAfterDelay());
         }
     }
@@ -161,10 +167,8 @@ public class AutoInterstitialAd : MonoBehaviour
     private IEnumerator HideReceivedPanelAfterDelay()
     {
         yield return new WaitForSecondsRealtime(receivedPanelDisplayTime);
-        
         if (receivedPanel != null)
             receivedPanel.SetActive(false);
-        
         _hideReceivedPanelCoroutine = null;
     }
 
@@ -191,7 +195,7 @@ public class AutoInterstitialAd : MonoBehaviour
             // Мгновенно обновляем UI
             ApplyAdsDisabled();
             ShowReceivedPanel();
-
+            
             // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ ЧЕРЕЗ PLAYER STATS
             if (_playerStatsManager != null)
             {
@@ -199,13 +203,12 @@ public class AutoInterstitialAd : MonoBehaviour
                 _playerStatsManager.SetAdsDisabled(true);
                 Debug.Log("⚡ Pending-флаг мгновенно сохранен в Player Stats");
             }
-
+            
             // Сохраняем в основное облако (для остальных данных)
-            if (YG2.saves != null)
+            if (YG2InitializationManager.CanAccessSaves())
             {
                 YG2.saves.adsDisabled = true;
                 YG2.saves.pendingAdsDisabled = true;
-                
                 if (_saveManager != null)
                 {
                     _saveManager.SaveImmediately("ads_disable_purchase");
@@ -224,9 +227,7 @@ public class AutoInterstitialAd : MonoBehaviour
     private void OnPaymentsLoaded()
     {
         Debug.Log("💰 Данные о покупках загружены");
-        
         CheckForUnconsumedPurchases();
-        
         if (disableAdsButton != null && disableAdsButton.gameObject.activeSelf)
         {
             UpdateDisableAdsButtonText();
@@ -242,14 +243,12 @@ public class AutoInterstitialAd : MonoBehaviour
             if (purchase.id == "disable_ads" && !purchase.consumed)
             {
                 Debug.Log("🔍 Найдена непотребленная покупка disable_ads! Применяем...");
-                
                 ApplyAdsDisabled();
                 ShowReceivedPanel();
                 
-                if (YG2.saves != null)
+                if (YG2InitializationManager.CanAccessSaves())
                 {
                     YG2.saves.adsDisabled = true;
-                    
                     if (_saveManager != null)
                     {
                         _saveManager.SaveImmediately("unconsumed_purchase");
@@ -259,7 +258,6 @@ public class AutoInterstitialAd : MonoBehaviour
                         YG2.SaveProgress();
                     }
                 }
-                
                 break;
             }
         }
@@ -268,7 +266,7 @@ public class AutoInterstitialAd : MonoBehaviour
     private void UpdateDisableAdsButtonText()
     {
         if (disableAdsButtonText == null) return;
-
+        
         var purchase = YG2.PurchaseByID("disable_ads");
         if (purchase != null && !string.IsNullOrEmpty(purchase.priceCurrencyCode))
         {
@@ -289,10 +287,9 @@ public class AutoInterstitialAd : MonoBehaviour
         while (true)
         {
             yield return new WaitForSeconds(1f);
-
             if (!_isInitialized) continue;
             if (IsAdsDisabled()) continue;
-
+            
             if (Time.time - _lastAdTime >= minInterval)
             {
                 ShowAdWithCountdown();
@@ -317,10 +314,10 @@ public class AutoInterstitialAd : MonoBehaviour
 
         float originalTimeScale = Time.timeScale;
         Time.timeScale = 0f;
-
+        
         if (_characterController != null)
             _characterController.OnUIOrAdOpened();
-
+        
         if (adCountdownPanel != null)
             adCountdownPanel.SetActive(true);
 
@@ -328,21 +325,18 @@ public class AutoInterstitialAd : MonoBehaviour
         while (timer > 0)
         {
             if (IsAdsDisabled()) break;
-
             int sec = Mathf.CeilToInt(timer);
             string text = $"{GetLocalizedText("ad_in")} {sec}";
             if (countdownText != null) countdownText.text = text;
-
             yield return new WaitForSecondsRealtime(1f);
             timer -= 1f;
         }
 
         if (adCountdownPanel != null)
             adCountdownPanel.SetActive(false);
-
         if (_characterController != null)
             _characterController.OnUIOrAdClosed();
-
+        
         Time.timeScale = originalTimeScale;
 
         if (!IsAdsDisabled())
@@ -350,7 +344,7 @@ public class AutoInterstitialAd : MonoBehaviour
             Debug.Log("📺 Показ межстраничной рекламы");
             YG2.InterstitialAdvShow();
         }
-
+        
         _lastAdTime = Time.time;
         _currentCoroutine = null;
     }
@@ -360,13 +354,16 @@ public class AutoInterstitialAd : MonoBehaviour
         // Приоритет: сначала маркер
         if (adsDisabledMarker != null && adsDisabledMarker.activeInHierarchy)
             return true;
-
+        
         // Проверяем Player Stats (самое быстрое)
         if (_playerStatsManager != null && _playerStatsManager.GetAdsDisabled())
             return true;
-
-        // Затем обычные сохранения
-        return YG2.saves != null && YG2.saves.adsDisabled;
+        
+        // Затем обычные сохранения (с проверкой)
+        if (YG2InitializationManager.CanAccessSaves())
+            return YG2.saves.adsDisabled;
+        
+        return false;
     }
 
     private string GetLocalizedText(string key)
@@ -385,10 +382,8 @@ public class AutoInterstitialAd : MonoBehaviour
         YG2.onPurchaseSuccess -= OnPurchaseSuccess;
         YG2.onGetPayments -= OnPaymentsLoaded;
         YG2.onGetSDKData -= OnSDKDataLoaded;
-        
         if (disableAdsButton != null)
             disableAdsButton.onClick.RemoveListener(OnDisableAdsButtonClick);
-        
         if (_hideReceivedPanelCoroutine != null)
             StopCoroutine(_hideReceivedPanelCoroutine);
     }
@@ -399,9 +394,12 @@ public class AutoInterstitialAd : MonoBehaviour
     {
         if (adsDisabledMarker != null)
             adsDisabledMarker.SetActive(false);
-
-        YG2.saves.adsDisabled = false;
-        YG2.saves.pendingAdsDisabled = false;
+        
+        if (YG2InitializationManager.CanAccessSaves())
+        {
+            YG2.saves.adsDisabled = false;
+            YG2.saves.pendingAdsDisabled = false;
+        }
         
         // Сбрасываем Player Stats
         if (_playerStatsManager != null)
@@ -414,17 +412,17 @@ public class AutoInterstitialAd : MonoBehaviour
         {
             _saveManager.SaveImmediately("test_reset");
         }
-        else
+        else if (YG2InitializationManager.CanAccessSaves())
         {
             YG2.SaveProgress();
         }
-
+        
         if (disableAdsButton != null)
         {
             disableAdsButton.gameObject.SetActive(true);
             UpdateDisableAdsButtonText();
         }
-
+        
         Debug.Log("🔄 Тестовое сброс отключения рекламы выполнен");
     }
 #endif

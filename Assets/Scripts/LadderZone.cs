@@ -74,7 +74,7 @@ public class LadderZone : MonoBehaviour
     public bool IsPlayerInsideTrigger => _isPlayerInsideTrigger;
     public bool IsVIP => isVIP;
     public float CoinsMultiplier => coinsMultiplier;
-    public float TrophyRewardAmount => trophyRewardAmount; // добавлено для доступа к награде
+    public float TrophyRewardAmount => trophyRewardAmount;
 
     public void SetVIPAccess(bool unlocked)
     {
@@ -82,10 +82,11 @@ public class LadderZone : MonoBehaviour
             blocker.SetActive(!unlocked);
     }
 
-    // Геометрические методы (без изменений)
+    // Геометрические методы
     public Vector3 GetDirection() => (ladderTopPoint.position - ladderBottomPoint.position).normalized;
     public float GetLength() => Vector3.Distance(ladderBottomPoint.position, ladderTopPoint.position);
     public Vector3 GetPoint(float t) => Vector3.Lerp(ladderBottomPoint.position, ladderTopPoint.position, t);
+    
     public float GetProjection(Vector3 worldPoint)
     {
         Vector3 bottom = ladderBottomPoint.position;
@@ -104,23 +105,58 @@ public class LadderZone : MonoBehaviour
 
     private void Start()
     {
-        if (isVIP)
+        // 1. Открываем ворота сразу (это безопасно)
+        SetGatesActive(true);
+
+        // 2. Если лестница не VIP, преграды нет, ждать нечего
+        if (!isVIP) return;
+
+        // 3. Если VIP, проверяем, готов ли уже SDK
+        if (YG2InitializationManager.Instance != null && YG2InitializationManager.Instance.IsInitialized)
         {
-            // Проверяем инициализацию перед доступом к YG2.saves
-            if (YG2InitializationManager.CanAccessSaves())
+            // SDK уже готов (быстрая загрузка или тест в редакторе)
+            ApplyVIPStatus();
+        }
+        else
+        {
+            // SDK ещё грузится. Подписываемся на событие готовности.
+            // Как только SDK загрузится, он вызовет ApplyVIPStatus()
+            if (YG2InitializationManager.Instance != null)
             {
-                bool vipUnlocked = YG2.saves.vipUnlocked;
-                SetVIPAccess(vipUnlocked);
+                YG2InitializationManager.Instance.OnSDKReady += ApplyVIPStatus;
             }
             else
             {
-                // Если SDK ещё не готов, скрываем преграду по умолчанию
-                // VIP-доступ будет проверен позже через LadderZone или при покупке
-                SetVIPAccess(false);
-                Debug.LogWarning($"[LadderZone {ladderId}] YG2 SDK ещё не инициализирован, используем значение по умолчанию");
+                Debug.LogError("[LadderZone] YG2InitializationManager не найден на сцене! VIP горки будут заблокированы.");
             }
         }
-        SetGatesActive(true);
+    }
+
+    // Этот метод вызывается, когда SDK полностью готов
+    private void ApplyVIPStatus()
+    {
+        if (!isVIP) return;
+
+        if (YG2InitializationManager.CanAccessSaves())
+        {
+            bool vipUnlocked = YG2.saves.vipUnlocked;
+            SetVIPAccess(vipUnlocked);
+            Debug.Log($"[LadderZone {ladderId}] VIP статус применен: {vipUnlocked}");
+        }
+        else
+        {
+            Debug.LogWarning($"[LadderZone {ladderId}] Не удалось получить сохранения после инициализации.");
+            SetVIPAccess(false);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Обязательно отписываемся, чтобы избежать утечек памяти
+        if (YG2InitializationManager.Instance != null)
+        {
+            YG2InitializationManager.Instance.OnSDKReady -= ApplyVIPStatus;
+        }
     }
 
     private void SetGatesActive(bool active)
@@ -162,11 +198,12 @@ public class LadderZone : MonoBehaviour
     private IEnumerator ShowGatesCoroutine()
     {
         yield return new WaitForSeconds(gateReappearDelay);
+        
         bool playerInThis = currentCharacter != null || _isPlayerInsideTrigger;
         bool playerInDescent = connectedDescentLadder != null && connectedDescentLadder._isPlayerInsideTrigger;
         bool playerInAscent1 = connectedAscentLadder != null && connectedAscentLadder._isPlayerInsideTrigger;
         bool playerInAscent2 = connectedAscentLadder2 != null && connectedAscentLadder2._isPlayerInsideTrigger;
-
+        
         if (!playerInThis && !playerInDescent && !playerInAscent1 && !playerInAscent2)
         {
             SetAllConnectedGatesActive(true);
@@ -182,22 +219,38 @@ public class LadderZone : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (currentCharacter != null) return;
+        
         var characterLadder = other.GetComponent<ExampleCharacterController>();
         if (characterLadder != null && characterLadder.CurrentCharacterState != CharacterState.Climbing)
         {
-            if (isVIP && !YG2.saves.vipUnlocked)
+            // ✅ БЕЗОПАСНАЯ ПРОВЕРКА VIP В ТРИГГЕРЕ
+            bool isLocked = false;
+            if (isVIP)
+            {
+                if (YG2InitializationManager.CanAccessSaves())
+                {
+                    isLocked = !YG2.saves.vipUnlocked;
+                }
+                else
+                {
+                    // Если SDK не готов, считаем что заблокировано (безопасно)
+                    isLocked = true; 
+                }
+            }
+
+            if (isLocked)
             {
                 Debug.Log("VIP ladder locked. Purchase VIP access.");
                 return;
             }
-
+            
             bool isTopEntry = allowClimbingDown &&
                 ladderTopPoint != null &&
                 Vector3.Distance(characterLadder.transform.position, ladderTopPoint.position) <= snapDistance;
-
+            
             currentCharacter = characterLadder;
             _isPlayerInsideTrigger = true;
-
+            
             if (isTopEntry)
             {
                 characterLadder.StartClimbingFromTop(this);
@@ -210,7 +263,7 @@ public class LadderZone : MonoBehaviour
                 if (debugLogs)
                     Debug.Log($"[LadderZone] Игрок вошёл на лестницу {ladderId} (подъём: {!allowClimbingDown})");
             }
-
+            
             var wings = FindObjectOfType<WingsSystem>();
             if (wings != null) wings.OnLadderChanged(this);
             ForceHideGates();
@@ -222,11 +275,11 @@ public class LadderZone : MonoBehaviour
         var character = other.GetComponent<ExampleCharacterController>();
         if (character == null) return;
         if (currentCharacter != null && character != currentCharacter) return;
-
+        
         Vector3 playerPosition = character.transform.position;
         _wasNearTopOnExit = (!allowClimbingDown && ladderTopPoint != null &&
             IsNearTop(playerPosition, topExitThreshold));
-
+        
         if (debugLogs)
         {
             Debug.Log($"[LadderZone] Игрок вышел из лестницы {ladderId}");
@@ -235,7 +288,7 @@ public class LadderZone : MonoBehaviour
             Debug.Log($"[LadderZone] Расстояние до вершины: {Vector3.Distance(playerPosition, ladderTopPoint.position)}");
             Debug.Log($"[LadderZone] Был рядом с вершиной: {_wasNearTopOnExit}");
         }
-
+        
         if (character.CurrentCharacterState == CharacterState.Climbing)
         {
             _isPlayerInsideTrigger = false;
@@ -243,9 +296,9 @@ public class LadderZone : MonoBehaviour
                 Debug.Log($"[LadderZone] Игрок всё ещё лазает - переход на другую горку");
             return;
         }
-
+        
         _isPlayerInsideTrigger = false;
-
+        
         bool playerInConnectedLadder = false;
         if (connectedDescentLadder != null && connectedDescentLadder._isPlayerInsideTrigger)
             playerInConnectedLadder = true;
@@ -253,10 +306,10 @@ public class LadderZone : MonoBehaviour
             playerInConnectedLadder = true;
         if (connectedAscentLadder2 != null && connectedAscentLadder2._isPlayerInsideTrigger)
             playerInConnectedLadder = true;
-
+        
         if (debugLogs)
             Debug.Log($"[LadderZone] Игрок в связанной горке: {playerInConnectedLadder}");
-
+        
         if (!playerInConnectedLadder)
         {
             if (currentCharacter != null)
@@ -265,7 +318,7 @@ public class LadderZone : MonoBehaviour
                 var wings = FindObjectOfType<WingsSystem>();
                 if (wings != null) wings.OnLadderChanged(null);
             }
-
+            
             if (_wasNearTopOnExit)
             {
                 if (debugLogs)
@@ -290,17 +343,18 @@ public class LadderZone : MonoBehaviour
     private void OnDrawGizmos()
     {
         if (ladderTopPoint == null || ladderBottomPoint == null) return;
+        
         Gizmos.color = gizmoColor;
         Gizmos.DrawLine(ladderBottomPoint.position, ladderTopPoint.position);
         Gizmos.DrawSphere(ladderBottomPoint.position, 0.2f);
         Gizmos.DrawSphere(ladderTopPoint.position, 0.2f);
-
+        
         if (ladderTopPoint != null && !allowClimbingDown)
         {
             Gizmos.color = new Color(0, 1, 1, 0.2f);
             Gizmos.DrawSphere(ladderTopPoint.position, topExitThreshold);
         }
-
+        
         Vector3 middlePoint = (ladderBottomPoint.position + ladderTopPoint.position) / 2;
         if (allowClimbingDown)
         {
@@ -309,7 +363,7 @@ public class LadderZone : MonoBehaviour
         }
         Gizmos.color = Color.green;
         Gizmos.DrawLine(middlePoint, middlePoint + Vector3.up * 1f);
-
+        
         if (TryGetComponent<BoxCollider>(out var boxCollider))
         {
             Gizmos.color = gizmoColor;
