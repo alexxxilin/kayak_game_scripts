@@ -41,8 +41,12 @@ public class VIPManager : MonoBehaviour
 
         StartCoroutine(InitializeVIP());
         
+        // Подписываем кнопку на покупку и убеждаемся, что она активна
         if (purchaseButton != null)
+        {
             purchaseButton.onClick.AddListener(BuyVIP);
+            purchaseButton.interactable = true; // Гарантируем, что кнопка активна
+        }
     }
 
     private void OnEnable() 
