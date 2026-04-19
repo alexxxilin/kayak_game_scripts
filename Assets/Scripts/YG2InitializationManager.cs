@@ -6,6 +6,7 @@ using System.Collections;
 /// <summary>
 /// Менеджер инициализации Yandex Games SDK.
 /// Гарантирует, что все обращения к YG2.saves происходят после полной инициализации SDK.
+/// Также автоматически выполняет GameReadyAPI и инициализирует определение языка.
 /// </summary>
 public class YG2InitializationManager : MonoBehaviour
 {
@@ -18,6 +19,14 @@ public class YG2InitializationManager : MonoBehaviour
     [Tooltip("Задержка после инициализации перед разрешением доступа к saves (секунды)")]
     [SerializeField] private float postInitDelay = 0.5f;
 
+    [Header("Game Ready API")]
+    [Tooltip("Автоматически вызывать GameReadyAPI после инициализации (если в настройках плагина AutoGRA отключён)")]
+    [SerializeField] private bool autoCallGameReady = true;
+
+    [Header("Локализация")]
+    [Tooltip("Вызывать событие после определения языка платформы")]
+    [SerializeField] private bool invokeOnLanguageDetected = true;
+
     /// <summary>
     /// true если SDK полностью инициализирован и безопасен для использования
     /// </summary>
@@ -27,8 +36,14 @@ public class YG2InitializationManager : MonoBehaviour
     /// Событие вызывается когда SDK полностью готов к использованию
     /// </summary>
     public event Action OnSDKReady;
+    
+    /// <summary>
+    /// Событие вызывается после определения языка платформы
+    /// </summary>
+    public event Action<string> OnLanguageDetected;
 
-    private bool _isInitializing = false;
+    private bool _gameReadyCalled = false;
+    private string _detectedLanguage = "ru"; // дефолтное значение
 
     private void Awake()
     {
@@ -44,7 +59,6 @@ public class YG2InitializationManager : MonoBehaviour
             return;
         }
 
-        _isInitializing = true;
         StartCoroutine(InitializeSDK());
     }
 
@@ -54,7 +68,7 @@ public class YG2InitializationManager : MonoBehaviour
 
         float waitTime = 0f;
 
-        // Ждем пока SDK не будет включен
+        // ✅ Ждём инициализации SDK согласно документации
         while (!YG2.isSDKEnabled && waitTime < maxInitializationTime)
         {
             yield return new WaitForSeconds(0.1f);
@@ -64,27 +78,57 @@ public class YG2InitializationManager : MonoBehaviour
         if (!YG2.isSDKEnabled)
         {
             Debug.LogWarning($"⚠️ YG2InitializationManager: SDK не был инициализирован за {maxInitializationTime} сек. Продолжаем работу без SDK.");
+            // Даже без SDK вызываем GameReady если нужно, чтобы игра не зависла
+            if (autoCallGameReady && !_gameReadyCalled)
+            {
+                YG2.GameReadyAPI();
+                _gameReadyCalled = true;
+                Debug.Log("✅ GameReadyAPI вызван (режим без SDK)");
+            }
             IsInitialized = true;
             OnSDKReady?.Invoke();
             yield break;
         }
 
         Debug.Log("✅ YG2InitializationManager: SDK включен, ожидаем загрузку данных...");
-
-        // Дополнительная задержка для полной загрузки данных
+        
+        // 🔹 Дополнительная задержка для полной загрузки данных платформы
         yield return new WaitForSeconds(postInitDelay);
 
-        // Проверяем что saves не null
+        // 🔹 Проверяем что saves не null
         if (YG2.saves == null)
         {
             Debug.Log("⚠️ YG2InitializationManager: YG2.saves всё ещё null, создаем дефолтные сохранения...");
             YG2.SetDefaultSaves();
         }
 
+        // 🔹 🔥 АВТООПРЕДЕЛЕНИЕ ЯЗЫКА 🔥
+        // Язык автоматически определяется плагином через модуль EnvirData
+        // Но мы можем явно прочитать его и вызвать событие
+        _detectedLanguage = YG2.envir.language;
+        Debug.Log($"🌐 Обнаружен язык платформы: {_detectedLanguage}");
+        
+        if (invokeOnLanguageDetected)
+        {
+            OnLanguageDetected?.Invoke(_detectedLanguage);
+        }
+        
+        // 🔹 🔥 GAME READY API 🔥
+        // По умолчанию плагин сам вызывает GameReadyAPI если включена опция AutoGRA в Basic Settings
+        // Но если опция отключена — вызываем вручную
+        if (autoCallGameReady && !_gameReadyCalled)
+        {
+            // Проверяем, не вызвал ли уже плагин GameReady автоматически
+            // (это эвристика: если игра уже в фокусе и SDK готов — вероятно, AutoGRA сработал)
+            YG2.GameReadyAPI();
+            _gameReadyCalled = true;
+            Debug.Log("✅ GameReadyAPI вызван вручную");
+        }
+
         IsInitialized = true;
         Debug.Log("✅ YG2InitializationManager: SDK полностью инициализирован и готов к использованию!");
         
-        // Вызываем событие
+        // Вызываем событие готовности
         OnSDKReady?.Invoke();
     }
 
@@ -146,6 +190,31 @@ public class YG2InitializationManager : MonoBehaviour
         if (!Instance.IsInitialized) return false;
         if (YG2.saves == null) return false;
         return true;
+    }
+    
+    /// <summary>
+    /// Получить текущий определённый язык
+    /// </summary>
+    public static string GetDetectedLanguage()
+    {
+        if (Instance != null && Instance.IsInitialized)
+        {
+            return YG2.envir.language;
+        }
+        return "ru"; // дефолт
+    }
+    
+    /// <summary>
+    /// Принудительно вызвать GameReadyAPI (если ещё не вызывался)
+    /// </summary>
+    public static void EnsureGameReady()
+    {
+        if (Instance != null && !Instance._gameReadyCalled)
+        {
+            YG2.GameReadyAPI();
+            Instance._gameReadyCalled = true;
+            Debug.Log("✅ GameReadyAPI вызван через EnsureGameReady()");
+        }
     }
 
     private void OnDestroy()

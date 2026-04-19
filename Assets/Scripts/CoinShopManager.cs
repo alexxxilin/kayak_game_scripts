@@ -13,6 +13,7 @@ using KinematicCharacterController.Examples;
 /// Поддерживает покупку за рубли ИЛИ за серебряные монеты.
 /// 
 /// 🔥 Player Stats является ИСТОЧНИКОМ ПРАВДЫ для донатных покупок.
+/// 🔥 Интегрирована отправка метрик в Яндекс.Метрику
 /// </summary>
 public class CoinShopManager : MonoBehaviour
 {
@@ -167,7 +168,7 @@ public class CoinShopManager : MonoBehaviour
         YG2.BuyPayments(productId);
     }
 
-    // === ПОКУПКА ЗА СЕРЕБРЯНЫЕ МОНЕТЫ ===
+    // 🔥 ИЗМЕНЁННЫЙ МЕТОД: ПОКУПКА ЗА СЕРЕБРЯНЫЕ МОНЕТЫ С МЕТРИКАМИ
     private void BuyCoinOfferWithSilver(int offerIndex)
     {
         if (offerIndex < 0 || offerIndex >= coinOffers.Count) return;
@@ -186,11 +187,46 @@ public class CoinShopManager : MonoBehaviour
             return;
         }
 
+        // 🔥 МЕТРИКА: потрачены серебряные монеты на пакет монет
+        GameMetrics.SendSilverSpent(offer.silverPrice, "coin_pack_purchase");
+
         // 🔥 МГНОВЕННО СОХРАНЯЕМ СЕРЕБРЯНЫЕ МОНЕТЫ В PLAYER STATS
         if (_playerStatsManager != null)
         {
             _playerStatsManager.SetSilverCoins(_playerController.SilverCoins);
         }
+
+        // 🔥 МЕТРИКА: если в пакете есть питомец — отслеживаем его получение
+        if (offer.givePet && _petSystem != null)
+        {
+            var petMultiplier = _petSystem.petMultipliers.Find(m =>
+                m.shopIndex == offer.shopIndex && 
+                m.petLocalIndex == offer.petIndex);
+            
+            if (petMultiplier != null)
+            {
+                GameMetrics.SendPetPurchased(
+                    offer.shopIndex,
+                    offer.petIndex,
+                    GameMetrics.GetSafePetName(petMultiplier.petName),
+                    "silver_coins",
+                    offer.silverPrice,
+                    true,
+                    petMultiplier.rocketMultiplier,
+                    "pack"
+                );
+            }
+        }
+        
+        // 🔥 МЕТРИКА: покупка пакета монет
+        GameMetrics.SendCoinPackPurchased(
+            offer.productId,
+            (int)offer.coinsAmount,
+            "silver_coins",
+            offer.silverPrice,
+            offer.givePet,
+            offer.givePet ? offer.petIndex : -1
+        );
 
         // Выдача награды
         ProcessOfferReward(offer);
@@ -284,11 +320,43 @@ public class CoinShopManager : MonoBehaviour
         }
     }
 
-    // === ОБРАБОТЧИК УСПЕХА ПОКУПКИ ЗА РУБЛИ ===
+    // 🔥 ИЗМЕНЁННЫЙ МЕТОД: ОБРАБОТЧИК УСПЕХА ПОКУПКИ ЗА РУБЛИ С МЕТРИКАМИ
     public void OnPurchaseSuccess(string productId)
     {
         var offer = coinOffers.Find(o => o.productId == productId);
         if (offer == null) return;
+
+        // 🔥 МЕТРИКА: покупка за рубли
+        if (offer.givePet)
+        {
+            var petMultiplier = _petSystem?.petMultipliers.Find(m =>
+                m.shopIndex == offer.shopIndex && 
+                m.petLocalIndex == offer.petIndex);
+            
+            if (petMultiplier != null)
+            {
+                GameMetrics.SendPetPurchased(
+                    offer.shopIndex,
+                    offer.petIndex,
+                    GameMetrics.GetSafePetName(petMultiplier.petName),
+                    "rubles",
+                    0,
+                    true,
+                    petMultiplier.rocketMultiplier,
+                    "pack"
+                );
+            }
+        }
+        
+        // 🔥 МЕТРИКА: покупка пакета за рубли
+        GameMetrics.SendCoinPackPurchased(
+            offer.productId,
+            (int)offer.coinsAmount,
+            "rubles",
+            0,
+            offer.givePet,
+            offer.givePet ? offer.petIndex : -1
+        );
 
         ProcessOfferReward(offer);
 
