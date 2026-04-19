@@ -30,9 +30,12 @@ public class VIPManager : MonoBehaviour
         // Ждем инициализации SDK перед доступом к YG2.saves
         StartCoroutine(InitializeVIP());
         
-        // Подписываем кнопку на покупку
+        // Подписываем кнопку на покупку и убеждаемся, что она активна
         if (purchaseButton != null)
+        {
             purchaseButton.onClick.AddListener(BuyVIP);
+            purchaseButton.interactable = true; // Гарантируем, что кнопка активна
+        }
     }
 
     private System.Collections.IEnumerator InitializeVIP()
