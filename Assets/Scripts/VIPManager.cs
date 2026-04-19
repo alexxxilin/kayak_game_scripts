@@ -43,13 +43,17 @@ public class VIPManager : MonoBehaviour
         
         if (purchaseButton != null)
             purchaseButton.onClick.AddListener(BuyVIP);
-            
-        // 🔥 Подписка на событие получения каталога покупок для обновления цены
-        YG2.onGetPayments += UpdatePriceDisplay;
     }
 
-    private void OnDestroy()
+    private void OnEnable() 
     {
+        YG2.onPurchaseSuccess += OnPurchaseSuccess;
+        YG2.onGetPayments += UpdatePriceDisplay;
+    }
+    
+    private void OnDisable() 
+    {
+        YG2.onPurchaseSuccess -= OnPurchaseSuccess;
         YG2.onGetPayments -= UpdatePriceDisplay;
     }
 
@@ -61,23 +65,26 @@ public class VIPManager : MonoBehaviour
             yield return null;
         }
 
-        // 🔥 ШАГ 2: Консумирование необработанных покупок (ТРЕБОВАНИЕ ЯНДЕКС ИГР)
+        // 🔥 ШАГ 2: Консумирование необработанных покупок
         if (autoConsumeOnStart && YG2.isSDKEnabled)
         {
-            Debug.Log("🔄 VIPManager: проверка необработанных покупок...");
+            Debug.Log($"🔄 VIPManager: проверка необработанных покупок для {vipPurchaseId}...");
             
-            // Проверяем, есть ли необработанная покупка именно для этого товара
             var pendingPurchase = YG2.PurchaseByID(vipPurchaseId);
+            
+            if (pendingPurchase != null)
+            {
+                Debug.Log($"📦 Purchase info: consumed={pendingPurchase.consumed}, price={pendingPurchase.priceValue} {pendingPurchase.priceCurrencyCode}");
+            }
+            
             if (pendingPurchase != null && !pendingPurchase.consumed)
             {
                 Debug.Log("✅ Найдена необработанная покупка, консумируем...");
-                // Консумируем с автоматическим вызовом onPurchaseSuccess
                 YG2.ConsumePurchaseByID(vipPurchaseId, onPurchaseSuccess: true);
             }
             else
             {
-                // Если нет конкретной покупки — можно консумировать все (опционально)
-                // YG2.ConsumePurchases(onPurchaseSuccess: true);
+                Debug.Log("ℹ️ Необработанных покупок не найдено или товар уже консумирован");
             }
         }
 
@@ -91,56 +98,51 @@ public class VIPManager : MonoBehaviour
             Debug.Log("✅ VIP уже разблокирован, панель скрыта");
         }
         
-        // 🔥 ШАГ 4: Обновляем отображение цены (если каталог уже загружен)
+        // 🔥 ШАГ 4: Обновляем отображение цены
         UpdatePriceDisplay();
         
         Debug.Log($"✅ VIPManager: инициализация завершена, VIP = {vipUnlocked}");
     }
 
-    // 🔥 МЕТОД: Обновление отображения цены с автоматическим определением валюты
+    // 🔥 МЕТОД: Обновление отображения цены (полностью как в PetSystem)
     private void UpdatePriceDisplay()
     {
         if (priceDisplayText == null) return;
         
-        // Получаем информацию о товаре
+        // Получаем информацию о товаре из каталога
         _vipPurchaseInfo = YG2.PurchaseByID(vipPurchaseId);
         
+        // Проверяем, что каталог загрузился и у товара есть код валюты
         if (_vipPurchaseInfo != null && !string.IsNullOrEmpty(_vipPurchaseInfo.priceCurrencyCode))
         {
-            // Формируем строку цены: "99 ₽" или "1.99 $"
-            string currencySymbol = GetCurrencySymbol(_vipPurchaseInfo.priceCurrencyCode);
-            priceDisplayText.text = $"{_vipPurchaseInfo.priceValue} {currencySymbol}";
+            // Отображаем код валюты: RUB, USD, YAN и т.д. (без символов, чтобы не было квадратиков)
+            string currencyCode = _vipPurchaseInfo.priceCurrencyCode.ToUpper();
+            priceDisplayText.text = $"{_vipPurchaseInfo.priceValue} {currencyCode}";
             priceDisplayText.gameObject.SetActive(true);
             
-            // Блокируем кнопку, если товар уже консумирован (куплен)
+            // Кнопка активна ТОЛЬКО если:
+            // 1. VIP ещё не разблокирован
+            // 2. Товар ещё не консумирован
             if (purchaseButton != null)
             {
-                purchaseButton.interactable = !_vipPurchaseInfo.consumed && !vipUnlocked;
+                bool isUnlocked = vipUnlocked;
+                bool isConsumed = _vipPurchaseInfo.consumed;
+                
+                purchaseButton.interactable = !isUnlocked && !isConsumed;
+                
+                Debug.Log($"💡 VIPManager: Цена загружена. Interactable={!isUnlocked && !isConsumed} (VIP:{isUnlocked}, Consumed:{isConsumed})");
             }
         }
         else
         {
-            // Пока цена не загрузилась — показываем заглушку
+            // Пока каталог не загрузился — показываем заглушку и блокируем кнопку
             priceDisplayText.text = loadingPriceText;
-            if (purchaseButton != null) purchaseButton.interactable = false;
+            if (purchaseButton != null) 
+            {
+                purchaseButton.interactable = false;
+                Debug.Log("⏳ VIPManager: Каталог покупок ещё не загружен. Кнопка заблокирована.");
+            }
         }
-    }
-
-    // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД: Преобразование кода валюты в символ
-    private string GetCurrencySymbol(string currencyCode)
-    {
-        if (string.IsNullOrEmpty(currencyCode)) return "";
-        
-        return currencyCode.ToUpper() switch
-        {
-            "RUB" => "₽",
-            "USD" => "$",
-            "EUR" => "€",
-            "KZT" => "₸",
-            "BYN" => "Br",
-            "UAH" => "₴",
-            _ => currencyCode.ToUpper() // Если валюта неизвестна — показываем код
-        };
     }
 
     private void Update()
@@ -171,11 +173,17 @@ public class VIPManager : MonoBehaviour
             return;
         }
         
-        // 🔥 Проверка: если товар уже консумирован — не показываем окно покупки
+        // Если товар уже консумирован, но статус VIP не обновился — форсируем обновление
         if (_vipPurchaseInfo != null && _vipPurchaseInfo.consumed)
         {
             Debug.LogWarning("Товар уже был приобретён, но статус не обновлён. Обновляем...");
             OnPurchaseSuccess(vipPurchaseId);
+            return;
+        }
+        
+        if (!YG2.isSDKEnabled)
+        {
+            Debug.LogWarning("SDK ещё не инициализирован, покупка невозможна");
             return;
         }
         
@@ -194,9 +202,12 @@ public class VIPManager : MonoBehaviour
         if (vipPanel != null) vipPanel.SetActive(false);
         HideTriggerObjects();
 
-        // Сохраняем статус в облако и локально
+        // 🔥 Приоритет: PlayerStatsManager для мгновенного сохранения
         if (PlayerStatsManager.Instance != null)
+        {
             PlayerStatsManager.Instance.SetVIPUnlocked(true);
+            PlayerStatsManager.Instance.ForceSave();
+        }
         else
         {
             YG2.saves.vipUnlocked = true;
@@ -220,18 +231,5 @@ public class VIPManager : MonoBehaviour
         {
             if (obj != null) obj.SetActive(false);
         }
-    }
-
-    // 🔥 Подписка на события покупок
-    private void OnEnable() 
-    {
-        YG2.onPurchaseSuccess += OnPurchaseSuccess;
-        YG2.onGetPayments += UpdatePriceDisplay;
-    }
-    
-    private void OnDisable() 
-    {
-        YG2.onPurchaseSuccess -= OnPurchaseSuccess;
-        YG2.onGetPayments -= UpdatePriceDisplay;
     }
 }

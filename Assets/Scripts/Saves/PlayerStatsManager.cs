@@ -12,7 +12,7 @@ public class PlayerStatsManager : MonoBehaviour
     private const string DONATE_PET_PREFIX = "DonatePet_";
     private const string SILVER_COINS_KEY = "SilverCoins";
     private const string REGULAR_COINS_KEY = "RegularCoins";
-    private const string VIP_UNLOCKED_KEY = "VipUnlocked"; // NEW
+    private const string VIP_UNLOCKED_KEY = "VipUnlocked";
 
     [Header("Настройки")]
     [Tooltip("Сколько раз пытаться сохранить, если не получилось с первого раза")]
@@ -66,29 +66,69 @@ public class PlayerStatsManager : MonoBehaviour
     }
 
     // === VIP METHODS ===
+    
+    /// <summary>
+    /// Устанавливает статус разблокировки VIP-доступа с мгновенным сохранением
+    /// </summary>
     public void SetVIPUnlocked(bool value)
     {
         if (!_sdkReady) return;
+        
         int intValue = value ? 1 : 0;
         Debug.Log($"👑 PlayerStats: устанавливаем VIP = {value}");
+        
+        // Устанавливаем значение в Player Stats
         YG2.SetState(VIP_UNLOCKED_KEY, intValue);
 
         // Немедленно обновляем облачные сохранения для синхронизации
         if (YG2.saves != null)
         {
             YG2.saves.vipUnlocked = value;
+            // Сохраняем прогресс сразу
             YG2.SaveProgress();
         }
+        
+        // Запускаем гарантированное сохранение с повторными попытками
         StartCoroutine(GuaranteedSaveCoroutine(VIP_UNLOCKED_KEY, intValue));
     }
 
+    /// <summary>
+    /// Возвращает статус разблокировки VIP-доступа
+    /// </summary>
     public bool GetVIPUnlocked()
     {
         if (!_sdkReady) return false;
         return YG2.GetState(VIP_UNLOCKED_KEY) == 1;
     }
 
-    // === ОСТАЛЬНЫЕ МЕТОДЫ (без изменений, но добавлен VIP в сброс) ===
+    /// <summary>
+    /// Принудительное сохранение всех ключевых данных (вызывается после важных событий)
+    /// </summary>
+    public void ForceSave()
+    {
+        if (!_sdkReady) return;
+        
+        Debug.Log("💾 PlayerStats: принудительное сохранение");
+        
+        // Сохраняем ключевые значения
+        YG2.SetState(VIP_UNLOCKED_KEY, GetVIPUnlocked() ? 1 : 0);
+        YG2.SetState(SILVER_COINS_KEY, GetSilverCoins());
+        YG2.SetState(REGULAR_COINS_KEY, (int)GetRegularCoins());
+        YG2.SetState(ADS_DISABLED_KEY, GetAdsDisabled() ? 1 : 0);
+        
+        // Синхронизируем с облачными сохранениями
+        if (YG2.saves != null)
+        {
+            YG2.saves.vipUnlocked = GetVIPUnlocked();
+            YG2.saves.silverCoins = GetSilverCoins();
+            YG2.saves.coinsCollected = GetRegularCoins();
+            YG2.saves.adsDisabled = GetAdsDisabled();
+            YG2.SaveProgress();
+        }
+    }
+
+    // === ОСТАЛЬНЫЕ МЕТОДЫ ===
+    
     public void SetPendingAdsDisabled(bool value)
     {
         if (!_sdkReady) return;
@@ -342,7 +382,7 @@ public class PlayerStatsManager : MonoBehaviour
 
         SetPendingAdsDisabled(false);
         SetAdsDisabled(false);
-        SetVIPUnlocked(false); // NEW
+        SetVIPUnlocked(false);
         Debug.Log("   ✅ Реклама и VIP сброшены");
 
         SetRegularCoins(0);
@@ -368,7 +408,7 @@ public class PlayerStatsManager : MonoBehaviour
                 stat.Key != ADS_DISABLED_KEY &&
                 stat.Key != REGULAR_COINS_KEY &&
                 stat.Key != SILVER_COINS_KEY &&
-                stat.Key != VIP_UNLOCKED_KEY) // NEW
+                stat.Key != VIP_UNLOCKED_KEY)
             {
                 cleanedStats[stat.Key] = stat.Value;
             }
@@ -386,7 +426,7 @@ public class PlayerStatsManager : MonoBehaviour
         YG2.SetState(ADS_DISABLED_KEY, 0);
         YG2.SetState(REGULAR_COINS_KEY, 0);
         YG2.SetState(SILVER_COINS_KEY, 0);
-        YG2.SetState(VIP_UNLOCKED_KEY, 0); // NEW
+        YG2.SetState(VIP_UNLOCKED_KEY, 0);
         Debug.Log("💾 Финальное сохранение после сброса");
     }
 
