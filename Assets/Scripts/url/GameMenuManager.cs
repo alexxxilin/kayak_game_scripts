@@ -8,9 +8,6 @@ public class GameMenuManager : MonoBehaviour
 {
     public static GameMenuManager Instance { get; private set; }
 
-    // 🔥 ДОБАВЛЕНО: Ссылка на PlayerStatsManager для мгновенного сохранения
-    private PlayerStatsManager _playerStatsManager;
-
     [Header("UI References")]
     [SerializeField] private GameObject menuPanel;
     [SerializeField] private CanvasGroup menuCanvasGroup;
@@ -21,21 +18,21 @@ public class GameMenuManager : MonoBehaviour
     [Header("Telegram Buttons List")]
     [Tooltip("Все кнопки в этом списке будут открывать Telegram-канал из поля World Telegram URL")]
     [SerializeField] private List<Button> telegramButtons = new List<Button>();
-    
+
     [Header("World Telegram Reward System")]
     [SerializeField] private GameObject worldTelegramRewardPanel;
     [SerializeField] private Button worldClaimTelegramButton;
     [SerializeField] private TextMeshProUGUI worldTelegramStatusText;
-    
+
     // 🔥 ИЗМЕНЕНО: вместо монет — питомец
     [Header("Telegram Reward: Pet Settings")]
     [SerializeField] private PetSystem petSystem; // 🔥 Ссылка на PetSystem
     [SerializeField] private int telegramRewardShopIndex = 0; // Индекс магазина питомцев
     [SerializeField] private int telegramRewardPetTypeIndex = 0; // Индекс питомца в магазине
-    [SerializeField] private bool isTelegramRewardPetDonate = false; // Является ли питомец донатным
-    
+    [SerializeField] private bool isTelegramRewardPetDonate = true; // 🔥 Является ли питомец донатным (по умолчанию TRUE для Telegram!)
+
     [SerializeField] private string worldTelegramUrl = "https://t.me/RedFleetGames";
-    
+
     [Header("Trigger Settings")]
     [Tooltip("Список объектов-триггеров для активации Telegram-награды")]
     [SerializeField] private List<GameObject> telegramTriggerObjects = new List<GameObject>();
@@ -83,9 +80,6 @@ public class GameMenuManager : MonoBehaviour
 
         playerController = FindFirstObjectByType<KinematicCharacterController.Examples.ExampleCharacterController>();
 
-        // 🔥 ИНИЦИАЛИЗАЦИЯ ССЫЛКИ НА PLAYER STATS MANAGER
-        _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
-
         InitializeWorldTelegramReward();
 
         if (openMenuButton != null)
@@ -102,7 +96,7 @@ public class GameMenuManager : MonoBehaviour
             worldClaimTelegramButton.onClick.RemoveAllListeners();
             worldClaimTelegramButton.onClick.AddListener(OnWorldClaimTelegramButtonClick);
         }
-        
+
         SetupTelegramButtons();
     }
 
@@ -114,7 +108,7 @@ public class GameMenuManager : MonoBehaviour
             {
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(OpenTelegramChannel);
-                
+
                 if (showDebugLogs)
                     Debug.Log($"[{gameObject.name}] Кнопка '{button.name}' настроена для открытия Telegram");
             }
@@ -126,7 +120,7 @@ public class GameMenuManager : MonoBehaviour
         if (!string.IsNullOrEmpty(worldTelegramUrl))
         {
             YG2.OnURL(worldTelegramUrl);
-            
+
             if (showDebugLogs)
                 Debug.Log($"[{gameObject.name}] Открыт Telegram: {worldTelegramUrl}");
         }
@@ -258,9 +252,9 @@ public class GameMenuManager : MonoBehaviour
     {
         if (showDebugLogs)
             Debug.Log($"[{gameObject.name}] Игрок вошел в триггер");
-        
+
         isPlayerInTrigger = true;
-        
+
         if (worldTelegramRewardPanel != null)
         {
             worldTelegramRewardPanel.SetActive(true);
@@ -273,9 +267,9 @@ public class GameMenuManager : MonoBehaviour
     {
         if (showDebugLogs)
             Debug.Log($"[{gameObject.name}] Игрок вышел из триггера");
-        
+
         isPlayerInTrigger = false;
-        
+
         if (worldTelegramRewardPanel != null)
         {
             worldTelegramRewardPanel.SetActive(false);
@@ -287,7 +281,7 @@ public class GameMenuManager : MonoBehaviour
     {
         // Всегда открываем Telegram
         OpenTelegramChannel();
-        
+
         if (isWorldTelegramRewardClaimed)
         {
             if (showDebugLogs)
@@ -300,7 +294,7 @@ public class GameMenuManager : MonoBehaviour
         {
             // Проверка валидности индексов
             if (telegramRewardShopIndex >= 0 && telegramRewardShopIndex < petSystem.petShops.Count &&
-                telegramRewardPetTypeIndex >= 0 && 
+                telegramRewardPetTypeIndex >= 0 &&
                 telegramRewardPetTypeIndex < petSystem.petShops[telegramRewardShopIndex].pet3DPrefabs.Count)
             {
                 var newPet = new PetSystem.PetInstance
@@ -310,19 +304,10 @@ public class GameMenuManager : MonoBehaviour
                     petTypeIndex = telegramRewardPetTypeIndex
                 };
                 newPet.SetDonateStatus(isTelegramRewardPetDonate);
-                
+
                 petSystem.AddPetFromExternal(newPet);
-                
-                // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В PLAYER STATS (как донатные питомцы)
-                if (_playerStatsManager != null)
-                {
-                    _playerStatsManager.SetTelegramRewardPetObtained(telegramRewardPetTypeIndex, telegramRewardShopIndex);
-                }
-                
+
                 Debug.Log($"[{gameObject.name}] Выдан питомец: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
-                
-                // 🔥 Дополнительно сохраняем в облако для надёжности
-                SaveTelegramRewardPetToCloud();
             }
             else
             {
@@ -340,30 +325,10 @@ public class GameMenuManager : MonoBehaviour
         UpdateWorldTelegramRewardUI();
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Сохранение питомца-награды в облако
-    private void SaveTelegramRewardPetToCloud()
-    {
-        // Способ 1: Через SaveManager (если он есть на сцене)
-        var saveManager = FindFirstObjectByType<SaveManager>();
-        if (saveManager != null)
-        {
-            saveManager.SaveImmediately("telegram_reward_pet");
-            return;
-        }
-        
-        // Способ 2: Прямое сохранение через PetSystem + YG2
-        if (petSystem != null)
-        {
-            petSystem.SavePetsData();
-            YG2.SaveProgress();
-            Debug.Log($"[{gameObject.name}] Питомец-награда сохранён в облако");
-        }
-    }
-
     public void OpenMenu()
     {
         if (menuCanvasGroup == null) return;
-        
+
         menuCanvasGroup.alpha = 1f;
         menuCanvasGroup.blocksRaycasts = true;
         menuCanvasGroup.interactable = true;
@@ -373,7 +338,7 @@ public class GameMenuManager : MonoBehaviour
     public void CloseMenu()
     {
         if (menuCanvasGroup == null) return;
-        
+
         menuCanvasGroup.alpha = 0f;
         menuCanvasGroup.blocksRaycasts = false;
         menuCanvasGroup.interactable = false;
@@ -403,7 +368,7 @@ public class GameMenuManager : MonoBehaviour
             telegramButtons.Add(newButton);
             newButton.onClick.RemoveAllListeners();
             newButton.onClick.AddListener(OpenTelegramChannel);
-            
+
             if (showDebugLogs)
                 Debug.Log($"[{gameObject.name}] Добавлена новая Telegram-кнопка: {newButton.name}");
         }
@@ -415,7 +380,7 @@ public class GameMenuManager : MonoBehaviour
         {
             buttonToRemove.onClick.RemoveListener(OpenTelegramChannel);
             telegramButtons.Remove(buttonToRemove);
-            
+
             if (showDebugLogs)
                 Debug.Log($"[{gameObject.name}] Удалена Telegram-кнопка: {buttonToRemove.name}");
         }
@@ -427,7 +392,7 @@ public class GameMenuManager : MonoBehaviour
         if (newTrigger != null && !telegramTriggerObjects.Contains(newTrigger))
         {
             telegramTriggerObjects.Add(newTrigger);
-            
+
             var triggerComponent = newTrigger.GetComponent<TelegramTriggerComponent>();
             if (triggerComponent == null)
             {
@@ -435,7 +400,7 @@ public class GameMenuManager : MonoBehaviour
             }
             triggerComponent.Initialize(this, playerTag, showDebugLogs);
             triggerComponents.Add(triggerComponent);
-            
+
             if (showDebugLogs)
                 Debug.Log($"[{gameObject.name}] Добавлен новый триггер: {newTrigger.name}");
         }
@@ -452,7 +417,7 @@ public class GameMenuManager : MonoBehaviour
                 Destroy(component);
             }
             telegramTriggerObjects.Remove(triggerToRemove);
-            
+
             if (showDebugLogs)
                 Debug.Log($"[{gameObject.name}] Удалён триггер: {triggerToRemove.name}");
         }
@@ -526,7 +491,7 @@ public class GameMenuManager : MonoBehaviour
         if (openMenuButton != null) openMenuButton.onClick.RemoveListener(OpenMenu);
         if (closeMenuButton != null) closeMenuButton.onClick.RemoveListener(CloseMenu);
         if (worldClaimTelegramButton != null) worldClaimTelegramButton.onClick.RemoveListener(OnWorldClaimTelegramButtonClick);
-        
+
         foreach (var button in telegramButtons)
         {
             if (button != null)

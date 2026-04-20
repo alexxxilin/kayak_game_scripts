@@ -1,5 +1,6 @@
 using UnityEngine;
 using YG;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -301,6 +302,27 @@ public class PlayerStatsManager : MonoBehaviour
         return purchasedPets;
     }
 
+    // 🔥 НОВЫЙ МЕТОД: получение всех обычных питомцев из Player Stats
+    public List<string> GetAllObtainedRegularPets()
+    {
+        List<string> obtainedPets = new List<string>();
+        if (!_sdkReady) return obtainedPets;
+
+        var allStats = YG2.GetAllStats();
+        foreach (var stat in allStats)
+        {
+            if (stat.Key.StartsWith(REGULAR_PET_PREFIX) && stat.Value == 1)
+            {
+                obtainedPets.Add(stat.Key);
+                if (!_allRegularPetKeys.Contains(stat.Key))
+                {
+                    _allRegularPetKeys.Add(stat.Key);
+                }
+            }
+        }
+        return obtainedPets;
+    }
+
     private void LoadAllPetKeys()
     {
         if (!_sdkReady) return;
@@ -377,6 +399,7 @@ public class PlayerStatsManager : MonoBehaviour
             SetSilverCoins(YG2.saves.silverCoins);
         }
 
+        // 🔥 Синхронизация донатных питомцев
         var purchasedPets = GetAllPurchasedDonatePets();
         foreach (string petKey in purchasedPets)
         {
@@ -398,10 +421,42 @@ public class PlayerStatsManager : MonoBehaviour
                     Debug.Log($"✅ Восстанавливаем питомца [{shopIndex}:{petIndex}] из Player Stats в Cloud Saves");
                     YG2.saves.ownedPets.Add(new PetSaveData
                     {
-                        id = Random.Range(10000, 99999),
+                        id = UnityEngine.Random.Range(10000, 99999),
                         shopIndex = shopIndex,
                         petTypeIndex = petIndex,
                         isDonatePet = true
+                    });
+                }
+            }
+        }
+
+        // 🔥 Синхронизация обычных питомцев из Player Stats в Cloud Saves
+        var regularPets = GetAllObtainedRegularPets();
+        foreach (string petKey in regularPets)
+        {
+            // Формат ключа: "RegularPet_shopIndex_petIndex_source"
+            string[] parts = petKey.Replace("RegularPet_", "").Split('_');
+            if (parts.Length >= 2 && int.TryParse(parts[0], out int shopIndex) && int.TryParse(parts[1], out int petIndex))
+            {
+                bool existsInSaves = false;
+                foreach (var pet in YG2.saves.ownedPets)
+                {
+                    if (pet.shopIndex == shopIndex && pet.petTypeIndex == petIndex && !pet.isDonatePet)
+                    {
+                        existsInSaves = true;
+                        break;
+                    }
+                }
+
+                if (!existsInSaves)
+                {
+                    Debug.Log($"✅ Восстанавливаем обычного питомца [{shopIndex}:{petIndex}] из Player Stats в Cloud Saves");
+                    YG2.saves.ownedPets.Add(new PetSaveData
+                    {
+                        id = UnityEngine.Random.Range(10000, 99999),
+                        shopIndex = shopIndex,
+                        petTypeIndex = petIndex,
+                        isDonatePet = false
                     });
                 }
             }
