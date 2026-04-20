@@ -758,7 +758,10 @@ public class PetSystem : MonoBehaviour
         YG.YG2.saves.nextPetId = nextPetId;
         YG.YG2.saves.autoEquipPets = GetAutoEquipStatus();
 
-        Debug.Log("Pet data saved successfully");
+        // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В ОБЛАКО
+        YG2.SaveProgress();
+    
+        Debug.Log("✅ Pet data saved to cloud successfully");
     }
 
     public void SetAutoEquipStatus(bool status)
@@ -1163,76 +1166,80 @@ public class PetSystem : MonoBehaviour
     }
 
     // 🔥 НОВЫЙ МЕТОД: Завершение покупки питомца с метриками
-    private void CompletePetPurchase(int shopIndex, string currencyType, int cost)
+// 🔥 ОБНОВЛЁННЫЙ МЕТОД: Завершение покупки питомца с метриками и мгновенным сохранением в облако
+private void CompletePetPurchase(int shopIndex, string currencyType, int cost)
+{
+    // Проверка лимита инвентаря
+    int nonDonateCount = 0;
+    foreach (var pet in ownedPets)
     {
-        // Проверка лимита инвентаря
-        int nonDonateCount = 0;
-        foreach (var pet in ownedPets)
-        {
-            if (!pet.IsDonatePet) nonDonateCount++;
-        }
-
-        if (nonDonateCount >= maxPets)
-        {
-            ShowInventoryFullMessage();
-            return;
-        }
-
-        var currentShop = petShops[shopIndex];
-        if (currentShop == null) return;
-
-        int newPetIndex = GetRandomPetIndex(currentShop);
-
-        var newPet = new PetInstance
-        {
-            id = nextPetId++,
-            shopIndex = shopIndex,
-            petTypeIndex = newPetIndex
-        };
-
-        var petMultiplier = petMultipliers.Find(m => m.shopIndex == shopIndex && m.petLocalIndex == newPetIndex);
-        if (petMultiplier != null)
-        {
-            newPet.SetDonateStatus(petMultiplier.isDonatePet);
-        }
-
-        ownedPets.Add(newPet);
-        SavePetsData();
-        UpdatePetsListUI();
-        UpdateCoinsUI();
-        UpdateSilverCoinsUI(); // 🔥 Обновляем отображение серебряных монет
-        UpdatePetCounter();
-        ShowPurchaseSuccess(currentShop, newPetIndex);
-        SelectPetInInventory(ownedPets.Count - 1);
-
-        // 🔥 МЕТРИКА: питомец получен (отправляем только если это не донатное яйцо)
-        // Для донатных яиц метрика отправляется в BuyDonatePetWithSilver
-        if (!currentShop.isDonateShop)
-        {
-            string petName = petMultiplier?.petName ?? $"Pet_{newPetIndex}";
-            float multiplier = petMultiplier?.rocketMultiplier ?? 1f;
-            bool isDonate = petMultiplier?.isDonatePet ?? false;
-            
-            GameMetrics.SendPetPurchased(
-                shopIndex,
-                newPetIndex,
-                GameMetrics.GetSafePetName(petName),
-                currencyType,
-                cost,
-                isDonate,
-                multiplier,
-                "direct"
-            );
-        }
-
-        if (autoEquipToggle != null && autoEquipToggle.isOn)
-        {
-            AutoEquipBestPets();
-        }
-
-        CalculateCurrentMultiplier();
-        OnPetPurchased();
+        if (!pet.IsDonatePet) nonDonateCount++;
     }
+
+    if (nonDonateCount >= maxPets)
+    {
+        ShowInventoryFullMessage();
+        return;
+    }
+
+    var currentShop = petShops[shopIndex];
+    if (currentShop == null) return;
+
+    int newPetIndex = GetRandomPetIndex(currentShop);
+
+    var newPet = new PetInstance
+    {
+        id = nextPetId++,
+        shopIndex = shopIndex,
+        petTypeIndex = newPetIndex
+    };
+
+    var petMultiplier = petMultipliers.Find(m => m.shopIndex == shopIndex && m.petLocalIndex == newPetIndex);
+    if (petMultiplier != null)
+    {
+        newPet.SetDonateStatus(petMultiplier.isDonatePet);
+    }
+
+    ownedPets.Add(newPet);
+    
+    // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В ОБЛАКО (внутри SavePetsData() уже есть YG2.SaveProgress())
+    SavePetsData();
+    
+    UpdatePetsListUI();
+    UpdateCoinsUI();
+    UpdateSilverCoinsUI();
+    UpdatePetCounter();
+    ShowPurchaseSuccess(currentShop, newPetIndex);
+    SelectPetInInventory(ownedPets.Count - 1);
+
+    // 🔥 МЕТРИКА: питомец получен (отправляем только если это не донатное яйцо)
+    // Для донатных яиц метрика отправляется в BuyDonatePetWithSilver
+    if (!currentShop.isDonateShop)
+    {
+        string petName = petMultiplier?.petName ?? $"Pet_{newPetIndex}";
+        float multiplier = petMultiplier?.rocketMultiplier ?? 1f;
+        bool isDonate = petMultiplier?.isDonatePet ?? false;
+        
+        GameMetrics.SendPetPurchased(
+            shopIndex,
+            newPetIndex,
+            GameMetrics.GetSafePetName(petName),
+            currencyType,
+            cost,
+            isDonate,
+            multiplier,
+            "direct"
+        );
+    }
+
+    if (autoEquipToggle != null && autoEquipToggle.isOn)
+    {
+        AutoEquipBestPets();
+    }
+
+    CalculateCurrentMultiplier();
+    OnPetPurchased();
+}
 
     private void OnPetPurchased()
     {
@@ -1247,23 +1254,25 @@ public class PetSystem : MonoBehaviour
     {
         ownedPets.Add(pet);
         nextPetId = Mathf.Max(nextPetId, pet.id + 1);
-        
-        // 🔥 СОХРАНЯЕМ ТЕКУЩИЙ БАЛАНС МОНЕТ В PLAYER STATS
+    
+        // 🔥 Сохраняем баланс монет в Player Stats
         if (_playerStatsManager != null && playerController != null)
         {
             _playerStatsManager.SetRegularCoins((long)playerController.CoinsCollected);
         }
-        
-        SavePetsData();
+    
+        // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В ОБЛАКО
+        SavePetsData();  // Внутри уже есть YG2.SaveProgress()
+    
         UpdatePetsListUI();
         UpdatePetCounter();
         CalculateCurrentMultiplier();
-        
+    
         if (autoEquipToggle != null && autoEquipToggle.isOn)
         {
             AutoEquipBestPets();
         }
-        
+    
         OnPetPurchased();
     }
 

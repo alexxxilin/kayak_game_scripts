@@ -281,7 +281,7 @@ public class GameMenuManager : MonoBehaviour
     {
         // Всегда открываем Telegram
         OpenTelegramChannel();
-        
+    
         if (isWorldTelegramRewardClaimed)
         {
             if (showDebugLogs)
@@ -289,10 +289,9 @@ public class GameMenuManager : MonoBehaviour
             return;
         }
 
-        // 🔥 ВЫДАЧА ПИТОМЦА ВМЕСТО МОНЕТ
+        // 🔥 ВЫДАЧА ПИТОМЦА
         if (petSystem != null)
         {
-            // Проверка валидности индексов
             if (telegramRewardShopIndex >= 0 && telegramRewardShopIndex < petSystem.petShops.Count &&
                 telegramRewardPetTypeIndex >= 0 && 
                 telegramRewardPetTypeIndex < petSystem.petShops[telegramRewardShopIndex].pet3DPrefabs.Count)
@@ -304,22 +303,23 @@ public class GameMenuManager : MonoBehaviour
                     petTypeIndex = telegramRewardPetTypeIndex
                 };
                 newPet.SetDonateStatus(isTelegramRewardPetDonate);
-                
+            
                 petSystem.AddPetFromExternal(newPet);
-                
-                Debug.Log($"[{gameObject.name}] Выдан питомец: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
-                
-                // 🔥 ИСПРАВЛЕНИЕ: Сохраняем питомца в облако сразу после выдачи
-                SaveTelegramRewardPetToCloud();
+            
+                Debug.Log($"[{gameObject.name}] Выдан питомец за Telegram: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
+            
+                // 🔥 SavePetsData() внутри AddPetFromExternal уже вызывает YG2.SaveProgress()
+                // Дополнительно можно вызвать для надёжности:
+                YG2.SaveProgress();
             }
             else
             {
-                Debug.LogError($"[{gameObject.name}] Неверные индексы для питомца-награды! Shop:{telegramRewardShopIndex}, Pet:{telegramRewardPetTypeIndex}");
+                Debug.LogError($"[{gameObject.name}] Неверные индексы для питомца-награды!");
             }
         }
         else
         {
-            Debug.LogWarning($"[{gameObject.name}] PetSystem не назначен! Награда не выдана.");
+            Debug.LogWarning($"[{gameObject.name}] PetSystem не назначен!");
         }
 
         // Помечаем награду как полученную
