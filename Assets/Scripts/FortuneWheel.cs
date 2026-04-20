@@ -93,8 +93,8 @@ public class FortuneWheel : MonoBehaviour
 
     [Header("Бесплатные вращения")]
     public bool enableFreeSpins = true;
-    public float freeSpinInterval = 300f;
-    public int freeSpinsAmount = 3;
+    public float freeSpinInterval = 300f; // 5 минут в секундах
+    public int freeSpinsAmount = 1;
 
     private int currentSpins;
     private bool isSpinning = false;
@@ -135,12 +135,10 @@ public class FortuneWheel : MonoBehaviour
         if (adSpinTimerCoroutine != null) StopCoroutine(adSpinTimerCoroutine);
     }
 
-    // ✅ ИСПРАВЛЕНО: ждем инициализацию SDK перед загрузкой данных
     private IEnumerator WaitForSaveManager()
     {
         Debug.Log("🔄 FortuneWheel: Ожидание инициализации SDK...");
         
-        // Ждем пока SDK не будет инициализирован
         while (!YG2InitializationManager.CanAccessSaves())
         {
             yield return null;
@@ -242,35 +240,48 @@ public class FortuneWheel : MonoBehaviour
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: безопасный доступ к YG2.saves
+    // ✅ ИСПРАВЛЕНО: таймер бесплатных вращений ВСЕГДА сбрасывается к freeSpinInterval при загрузке
     private void LoadSpinsData()
     {
         if (!YG2InitializationManager.CanAccessSaves())
         {
             Debug.LogWarning("⚠️ FortuneWheel: YG2.saves ещё не доступен, используем значения по умолчанию");
             currentSpins = startSpins;
-            _freeSpinTimer = freeSpinInterval;
+            _freeSpinTimer = freeSpinInterval; // ✅ Всегда 5 минут при старте
             timeUntilAdSpinAvailable = 0f;
             UpdateUI();
             UpdateGlobalUI();
             return;
         }
         
+        // Загружаем только количество вращений
         currentSpins = YG2.saves.fortuneWheelSpins;
-        _freeSpinTimer = YG2.saves.timeUntilFreeSpin;
-        timeUntilAdSpinAvailable = YG2.saves.timeUntilAdSpinAvailable;
+        
+        // ✅ ТАЙМЕР БЕСПЛАТНЫХ ВРАЩЕНИЙ НЕ ЗАГРУЖАЕМ — всегда стартуем с freeSpinInterval
+        // ❌ УДАЛЕНО: _freeSpinTimer = YG2.saves.timeUntilFreeSpin;
+        _freeSpinTimer = freeSpinInterval;
+        
+        // Рекламный таймер загружаем как обычно
+        timeUntilAdSpinAvailable = Mathf.Max(0f, YG2.saves.timeUntilAdSpinAvailable);
         
         UpdateUI();
         UpdateGlobalUI();
-        Debug.Log($"Загружено: спины = {currentSpins}. Таймер бесплатных вращений = {_freeSpinTimer} сек.");
+        Debug.Log($"✅ FortuneWheel: загружено спинов = {currentSpins}, таймер бесплатных вращений сброшен к {freeSpinInterval} сек.");
     }
 
+    // ✅ ИСПРАВЛЕНО: таймер бесплатных вращений НЕ сохраняется в облако
     private void SaveSpinsData()
     {
         if (YG2InitializationManager.CanAccessSaves())
         {
             YG2.saves.fortuneWheelSpins = currentSpins;
+            
+            // ❌ НЕ сохраняем timeUntilFreeSpin — он всегда сбрасывается при старте
+            // ❌ УДАЛЕНО: YG2.saves.timeUntilFreeSpin = _freeSpinTimer;
+            
+            // Рекламный таймер сохраняем (он отдельный)
             YG2.saves.timeUntilAdSpinAvailable = timeUntilAdSpinAvailable;
+            
             YG2.SaveProgress();
         }
     }
@@ -294,6 +305,17 @@ public class FortuneWheel : MonoBehaviour
         UpdateGlobalUI();
     }
 
+    [ContextMenu("Очистить таймер бесплатных вращений в облаке")]
+    public void ClearFreeSpinTimerInCloud()
+    {
+        if (YG2InitializationManager.CanAccessSaves())
+        {
+            YG2.saves.timeUntilFreeSpin = 0f;
+            YG2.SaveProgress();
+            Debug.Log("🧹 Таймер бесплатных вращений очищен в облаке");
+        }
+    }
+
     private void StartFreeSpinTimer()
     {
         if (freeSpinCoroutine != null)
@@ -309,8 +331,9 @@ public class FortuneWheel : MonoBehaviour
             if (_freeSpinTimer <= 0)
             {
                 AddSpins(freeSpinsAmount);
-                _freeSpinTimer = freeSpinInterval;
-                SaveSpinsData();
+                _freeSpinTimer = freeSpinInterval; // ✅ Сбрасываем таймер снова на 5 минут
+                SaveSpinsData(); // Сохраняем только количество спинов
+                Debug.Log("🎁 Бесплатное вращение выдано! Таймер перезапущен.");
             }
             UpdateFreeSpinTimerUI();
             yield return null;
@@ -680,7 +703,7 @@ public class FortuneWheel : MonoBehaviour
     
     public void SetTimeUntilFreeSpin(float time)
     {
-        _freeSpinTimer = time;
+        _freeSpinTimer = Mathf.Clamp(time, 0f, freeSpinInterval * 2f);
         UpdateFreeSpinTimerUI();
         UpdateGlobalUI();
     }

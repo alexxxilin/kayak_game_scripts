@@ -1,10 +1,10 @@
 using UnityEngine;
 using YG;
+using System.Linq;
 
 /// <summary>
 /// Централизованный роутер покупок.
-/// Обрабатывает все внутриигровые покупки: отключение рекламы, спины колеса фортуны,
-/// монеты и питомцы из CoinShopManager, донатные питомцы из PetSystem.
+/// Обрабатывает ВСЕ внутриигровые покупки: реклама, спины, монеты, питомцы, VIP.
 /// Гарантирует однократную обработку даже после перезагрузки.
 /// </summary>
 public class PurchaseRouter : MonoBehaviour
@@ -15,6 +15,7 @@ public class PurchaseRouter : MonoBehaviour
         YG2.onPurchaseSuccess += OnPurchaseSuccess;
 
         // 🔥 Затем консумируем все необработанные покупки (вызовет onPurchaseSuccess один раз для каждой)
+        // onPurchaseSuccess: true — для необработанных покупок вызовет событие, чтобы мы выдали награду
         YG2.ConsumePurchases(onPurchaseSuccess: true);
     }
 
@@ -25,6 +26,8 @@ public class PurchaseRouter : MonoBehaviour
 
     private void OnPurchaseSuccess(string productId)
     {
+        Debug.Log($"🔄 PurchaseRouter: обработка покупки {productId}");
+
         // 1. Отключение рекламы
         if (productId == "disable_ads")
         {
@@ -48,7 +51,25 @@ public class PurchaseRouter : MonoBehaviour
             return;
         }
 
-        // 3. Покупка монет (и, возможно, питомца)
+        // 3. 🔥 VIP-доступ
+        var vipManager = FindFirstObjectByType<VIPManager>();
+        if (vipManager != null && productId == vipManager.GetPurchaseId())
+        {
+            Debug.Log($"👑 Обработка покупки VIP: {productId}");
+            vipManager.GrantVIP();
+            return;
+        }
+
+        // 4. Серебряные монеты
+        var silverShop = FindFirstObjectByType<SilverCoinsShopManager>();
+        if (silverShop != null && silverShop.silverCoinProductIds.Contains(productId))
+        {
+            // Награда уже выдана в SilverCoinsShopManager через событие
+            Debug.Log($"🪙 Обработана покупка серебряных монет: {productId}");
+            return;
+        }
+
+        // 5. Обычные монеты / питомцы из CoinShopManager
         var coinShopManager = FindFirstObjectByType<CoinShopManager>();
         if (coinShopManager != null && coinShopManager.IsCoinOffer(productId))
         {
@@ -56,9 +77,24 @@ public class PurchaseRouter : MonoBehaviour
             return;
         }
 
-        // 4. Донатные питомцы
+        // 6. Донатные питомцы из PetSystem
         var petSystem = FindFirstObjectByType<PetSystem>();
         if (petSystem != null)
-            petSystem.OnPurchaseSuccess(productId);
+        {
+            // Проверяем, что это донатный питомец из списка
+            var donateIdsField = petSystem.GetType().GetField("donatePetProductIds", 
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (donateIdsField != null)
+            {
+                var donateIds = donateIdsField.GetValue(petSystem) as System.Collections.Generic.List<string>;
+                if (donateIds != null && donateIds.Contains(productId))
+                {
+                    petSystem.OnPurchaseSuccess(productId);
+                    return;
+                }
+            }
+        }
+
+        Debug.LogWarning($"⚠️ PurchaseRouter: неизвестный товар {productId}");
     }
 }

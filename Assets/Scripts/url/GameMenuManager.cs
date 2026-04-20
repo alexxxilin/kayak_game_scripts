@@ -308,6 +308,9 @@ public class GameMenuManager : MonoBehaviour
                 petSystem.AddPetFromExternal(newPet);
                 
                 Debug.Log($"[{gameObject.name}] Выдан питомец: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
+                
+                // 🔥 ИСПРАВЛЕНИЕ: Сохраняем питомца в облако сразу после выдачи
+                SaveTelegramRewardPetToCloud();
             }
             else
             {
@@ -323,6 +326,26 @@ public class GameMenuManager : MonoBehaviour
         isWorldTelegramRewardClaimed = true;
         SaveWorldTelegramRewardState();
         UpdateWorldTelegramRewardUI();
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Сохранение питомца-награды в облако
+    private void SaveTelegramRewardPetToCloud()
+    {
+        // Способ 1: Через SaveManager (если он есть на сцене)
+        var saveManager = FindFirstObjectByType<SaveManager>();
+        if (saveManager != null)
+        {
+            saveManager.SaveImmediately("telegram_reward_pet");
+            return;
+        }
+        
+        // Способ 2: Прямое сохранение через PetSystem + YG2
+        if (petSystem != null)
+        {
+            petSystem.SavePetsData();
+            YG2.SaveProgress();
+            Debug.Log($"[{gameObject.name}] Питомец-награда сохранён в облако");
+        }
     }
 
     public void OpenMenu()

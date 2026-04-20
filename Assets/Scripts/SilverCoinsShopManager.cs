@@ -10,7 +10,7 @@ using KinematicCharacterController.Examples;
 /// <summary>
 /// Управление покупкой серебряных монет за реальные деньги (IAP).
 /// 🔥 Предложения настраиваются через консоль Яндекс Игр (Payments).
-/// 🔥 Покупки консумируются и мгновенно сохраняются согласно документации YG2.
+/// 🔥 Покупки консумируются через PurchaseRouter, здесь только выдача награды и сохранение.
 /// </summary>
 public class SilverCoinsShopManager : MonoBehaviour
 {
@@ -79,6 +79,7 @@ public class SilverCoinsShopManager : MonoBehaviour
     {
         // Подписка на события покупок
         YG2.onPurchaseSuccess += OnPurchaseSuccess;
+        YG2.onPurchaseFailed += OnPurchaseFailed; // 🔥 НОВОЕ: обработка отмены/ошибки
         YG2.onGetPayments += UpdateAllPrices;
     }
 
@@ -114,6 +115,7 @@ public class SilverCoinsShopManager : MonoBehaviour
     private void OnDestroy()
     {
         YG2.onPurchaseSuccess -= OnPurchaseSuccess;
+        YG2.onPurchaseFailed -= OnPurchaseFailed; // 🔥 НОВОЕ: отписка
         YG2.onGetPayments -= UpdateAllPrices;
     }
 
@@ -221,7 +223,11 @@ public class SilverCoinsShopManager : MonoBehaviour
     // === ПОКУПКА СЕРЕБРЯНЫХ МОНЕТ ===
     private void BuySilverCoinsOffer(int offerIndex)
     {
-        if (_isProcessingPurchase) return;
+        if (_isProcessingPurchase) 
+        {
+            Debug.LogWarning("🛒 Покупка уже в процессе, ждём ответа...");
+            return;
+        }
         if (offerIndex < 0 || offerIndex >= silverCoinProductIds.Count) return;
 
         string productId = silverCoinProductIds[offerIndex];
@@ -255,25 +261,33 @@ public class SilverCoinsShopManager : MonoBehaviour
             Debug.Log("💾 Серебряные монеты сохранены в Player Stats");
         }
 
-        // 3. 🔥 Консумируем покупку согласно документации YG2
-        StartCoroutine(ConsumeAndSaveWithRetry(productId, coinsAmount));
+        // 3. 🔥 Сохраняем в Cloud Saves с повторными попытками (КОНСУМИРОВАНИЕ ДЕЛАЕТ PurchaseRouter!)
+        StartCoroutine(SaveWithRetry());
 
         // 4. Показываем панель успеха
         ShowPurchaseSuccess(coinsAmount);
         
         // 🔥 Обновляем счётчик серебряных монет после покупки
         UpdateSilverCoinsCounter();
+        
+        _isProcessingPurchase = false;
     }
 
-    // === КОНСУМИРОВАНИЕ + СОХРАНЕНИЕ С ПОВТОРНЫМИ ПОПЫТКАМИ ===
-    private IEnumerator ConsumeAndSaveWithRetry(string productId, int coinsGranted)
+    // 🔥 НОВЫЙ МЕТОД: обработка отмены/ошибки покупки
+    private void OnPurchaseFailed(string productId)
     {
-        // 🔥 Шаг 1: Консумируем покупку (обязательно по документации YG2)
-        Debug.Log("🔄 Консумирование покупки...");
-        YG2.ConsumePurchaseByID(productId, true);
-        Debug.Log($"✅ Покупка {productId} отправлена на консумирование");
+        Debug.Log($"❌ Покупка отменена или не удалась: {productId}");
+        
+        // 🔥 СБРАСЫВАЕМ флаг, чтобы кнопки снова работали!
+        _isProcessingPurchase = false;
+        
+        // Опционально: показать сообщение игроку
+        // ShowResult("Покупка отменена", Color.yellow);
+    }
 
-        // 🔥 Шаг 2: Сохраняем в Cloud Saves с повторными попытками
+    // === СОХРАНЕНИЕ С ПОВТОРНЫМИ ПОПЫТКАМИ (БЕЗ КОНСУМИРОВАНИЯ) ===
+    private IEnumerator SaveWithRetry()
+    {
         for (int attempt = 1; attempt <= saveRetryCount; attempt++)
         {
             Debug.Log($"💾 Cloud Saves: попытка #{attempt} (silver_purchase)");
@@ -297,8 +311,7 @@ public class SilverCoinsShopManager : MonoBehaviour
             yield return new WaitForSecondsRealtime(saveRetryDelay);
         }
         
-        Debug.Log($"✅ Silver IAP: консумирование и сохранение завершено");
-        _isProcessingPurchase = false;
+        Debug.Log($"✅ Silver IAP: сохранение завершено");
     }
 
     // === ОТОБРАЖЕНИЕ УСПЕШНОЙ ПОКУПКИ ===

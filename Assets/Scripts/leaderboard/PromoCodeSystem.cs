@@ -29,6 +29,10 @@ public class PromoCodeSystem : MonoBehaviour
     public string successTextEN = "Promo code activated";
     [Tooltip("Текст при ошибке (английский)")]
     public string errorTextEN = "Promo code expired or already activated";
+    [Tooltip("Текст при сбросе сохранений (русский)")]
+    public string clearStatsSuccessRU = "Все сохранения очищены";
+    [Tooltip("Текст при сбросе сохранений (английский)")]
+    public string clearStatsSuccessEN = "All saves cleared";
     
     [Header("Настройки отображения")]
     public float resultDisplayTime = 3f;
@@ -53,10 +57,15 @@ public class PromoCodeSystem : MonoBehaviour
     [Tooltip("Название флага для максимального количества монет в награде")]
     public string maxCoinsRewardFlag = "max_coins_reward";
     
+    [Header("Спец-промокоды")]
+    [Tooltip("Промокод для полного сброса сохранений (работает всегда, независимо от флагов)")]
+    [SerializeField] private string clearStatsPromoCode = "clear_stats";
+    
     private List<PromoCodeData> allPromoCodes = new List<PromoCodeData>();
     private ExampleCharacterController playerController;
     private PetSystem petSystem;
     private PlayerStatsManager playerStatsManager;
+    private SaveManager saveManager;
     
     private Coroutine messageCoroutine;
     
@@ -79,6 +88,7 @@ public class PromoCodeSystem : MonoBehaviour
         playerController = FindFirstObjectByType<ExampleCharacterController>();
         petSystem = FindFirstObjectByType<PetSystem>();
         playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
+        saveManager = FindFirstObjectByType<SaveManager>();
         
         if (promoCodePanel != null)
             promoCodePanel.SetActive(false);
@@ -210,7 +220,7 @@ public class PromoCodeSystem : MonoBehaviour
         {
             foreach (var flag in YG2.flags)
             {
-                if (flag.name.StartsWith(promoRewardsFlag)) // например "promo_rewards", "promo_rewards1", "promo_rewards_2" и т.д.
+                if (flag.name.StartsWith(promoRewardsFlag))
                 {
                     Debug.Log($"[PromoCode] Найден флаг наград: {flag.name} = {flag.value}");
                     AddRewardsFromFlag(flag.value);
@@ -227,7 +237,6 @@ public class PromoCodeSystem : MonoBehaviour
         InitializePromoCodes();
     }
     
-    // Переименовано и больше не очищает _flagRewards
     private void AddRewardsFromFlag(string json)
     {
         try
@@ -270,7 +279,6 @@ public class PromoCodeSystem : MonoBehaviour
                         continue;
                     }
                     
-                    // Добавляем в общий словарь (если ключ уже есть, перезаписываем – последний флаг имеет приоритет)
                     _flagRewards[code] = promoData;
                 }
                 else
@@ -289,13 +297,11 @@ public class PromoCodeSystem : MonoBehaviour
     {
         allPromoCodes.Clear();
         
-        // Добавляем все промокоды из собранных наград
         foreach (var flagReward in _flagRewards.Values)
         {
             allPromoCodes.Add(flagReward);
         }
         
-        // Фильтруем по списку активных промокодов, если он задан
         if (_allowedPromoCodes.Count > 0)
         {
             int before = allPromoCodes.Count;
@@ -360,14 +366,6 @@ public class PromoCodeSystem : MonoBehaviour
             return;
         }
 
-        if (!_isPromoSystemEnabled)
-        {
-            ShowResult(GetLocalizedText(errorTextRU, errorTextEN), errorColor);
-            PlaySound(errorSound);
-            ClearInput();
-            return;
-        }
-        
         if (promoCodeInput == null || string.IsNullOrWhiteSpace(promoCodeInput.text))
         {
             ShowResult(GetLocalizedText(errorTextRU, errorTextEN), errorColor);
@@ -383,6 +381,24 @@ public class PromoCodeSystem : MonoBehaviour
     {
         if (!_sdkReady) return;
 
+        // 🔥 СПЕЦ-ПРОМОКОД: clear_stats — сбрасывает ВСЕ сохранения
+        if (code == clearStatsPromoCode.ToUpper())
+        {
+            ExecuteClearStats();
+            ClearInput();
+            return;
+        }
+
+        // Проверка: система промокодов включена?
+        if (!_isPromoSystemEnabled)
+        {
+            ShowResult(GetLocalizedText(errorTextRU, errorTextEN), errorColor);
+            PlaySound(errorSound);
+            ClearInput();
+            return;
+        }
+        
+        // Проверка: уже активирован?
         if (IsPromoCodeActivated(code))
         {
             ShowResult(GetLocalizedText(errorTextRU, errorTextEN), errorColor);
@@ -391,6 +407,7 @@ public class PromoCodeSystem : MonoBehaviour
             return;
         }
         
+        // Поиск промокода в списке
         PromoCodeData promoCode = allPromoCodes.Find(p => p.code == code);
         
         if (promoCode == null)
@@ -417,6 +434,7 @@ public class PromoCodeSystem : MonoBehaviour
             return;
         }
         
+        // Выдача награды
         bool success = false;
         string rewardDescription = "";
         
@@ -448,6 +466,74 @@ public class PromoCodeSystem : MonoBehaviour
         }
         
         ClearInput();
+    }
+    
+    // 🔥 НОВЫЙ МЕТОД: Полный сброс всех сохранений
+    private void ExecuteClearStats()
+    {
+        Debug.Log("🧹 [PromoCode] Выполняется полный сброс сохранений через промокод clear_stats");
+        
+        // 1. Сброс стандартных сохранений
+        YG2.SetDefaultSaves();
+        
+        // 2. Сброс Player Stats (донатные покупки, монеты, VIP)
+        if (playerStatsManager != null)
+        {
+            playerStatsManager.ResetAllDonatePurchases();
+            Debug.Log("[PromoCode] Player Stats сброшены");
+        }
+        
+        // 3. Явная очистка ключевых полей в облаке
+        if (YG2.saves != null)
+        {
+            YG2.saves.vipUnlocked = false;
+            YG2.saves.silverCoins = 0;
+            YG2.saves.coinsCollected = 0;
+            YG2.saves.adsDisabled = false;
+            YG2.saves.pendingAdsDisabled = false;
+            YG2.saves.activatedPromoCodes?.Clear();
+            YG2.saves.ownedPets?.Clear();
+            YG2.saves.equippedPetIds?.Clear();
+            Debug.Log("[PromoCode] Облачные сохранения очищены");
+        }
+        
+        // 4. Сброс локальных PlayerPrefs (на всякий случай)
+        PlayerPrefs.DeleteAll();
+        PlayerPrefs.Save();
+        
+        // 5. Принудительное сохранение в облако
+        YG2.SaveProgress();
+        
+        // 6. Сброс данных в игровых системах
+        if (playerController != null)
+        {
+            playerController.SetCoins(0);
+            playerController.SetSilverCoins(0);
+            Debug.Log("[PromoCode] Счётчики игрока сброшены");
+        }
+        
+        if (petSystem != null)
+        {
+            petSystem.ResetPetsData();
+            Debug.Log("[PromoCode] Данные питомцев сброшены");
+        }
+        
+        // 7. Обновление сохранений в других менеджерах
+        if (saveManager != null)
+        {
+            saveManager.ApplySaveData();
+            Debug.Log("[PromoCode] Данные применены после сброса");
+        }
+        
+        // 8. Уведомление VIPManager о сбросе
+        var vipManager = FindFirstObjectByType<VIPManager>();
+        vipManager?.OnVIPStatusReset();
+        
+        // 9. Показ сообщения об успехе
+        ShowResult(GetLocalizedText(clearStatsSuccessRU, clearStatsSuccessEN), successColor);
+        PlaySound(successSound);
+        
+        Debug.Log("✅ [PromoCode] Все сохранения успешно очищены!");
     }
     
     private bool GiveCoinReward(PromoCodeData promoCode)
@@ -485,7 +571,6 @@ public class PromoCodeSystem : MonoBehaviour
         int shopIndex = promoCode.petShopIndex;
         int petIndex = promoCode.petTypeIndex;
 
-        // Проверка валидности индексов
         if (shopIndex < 0 || shopIndex >= petSystem.petShops.Count)
         {
             Debug.LogError($"[PromoCode] Неверный индекс магазина: {shopIndex}");
@@ -499,7 +584,6 @@ public class PromoCodeSystem : MonoBehaviour
             return false;
         }
 
-        // Проверка, не владеет ли игрок уже таким питомцем
         bool alreadyOwned = false;
         foreach (var pet in petSystem.ownedPets)
         {
@@ -516,18 +600,16 @@ public class PromoCodeSystem : MonoBehaviour
             return false;
         }
 
-        // Создание нового питомца
         var newPet = new PetSystem.PetInstance
         {
             id = petSystem.GetNextPetId(),
             shopIndex = shopIndex,
             petTypeIndex = petIndex
         };
-        newPet.SetDonateStatus(shop.isDonateShop); // Устанавливаем донатность в соответствии с магазином
+        newPet.SetDonateStatus(shop.isDonateShop);
 
         petSystem.AddPetFromExternal(newPet);
 
-        // Если питомец донатный, отмечаем в PlayerStatsManager
         if (shop.isDonateShop && playerStatsManager != null)
         {
             playerStatsManager.SetDonatePetPurchased(petIndex, shopIndex);
@@ -755,6 +837,12 @@ public class PromoCodeSystem : MonoBehaviour
         _isEnglish = !_isEnglish;
         Debug.Log($"[PromoCode] Язык переключён для теста: {(_isEnglish ? "Английский" : "Русский")}");
     }
+    
+    [ContextMenu("Тест: выполнить сброс сохранений")]
+    public void TestClearStats()
+    {
+        ExecuteClearStats();
+    }
 }
 
 [Serializable]
@@ -790,11 +878,9 @@ public static class SimpleJson
 
         while (index < length)
         {
-            // Пропускаем пробелы
             while (index < length && char.IsWhiteSpace(json[index])) index++;
             if (index >= length) break;
 
-            // Парсим ключ
             if (json[index] != '"')
                 throw new Exception($"Expected '\"' at position {index}");
             index++;
@@ -802,23 +888,19 @@ public static class SimpleJson
             while (index < length && json[index] != '"') index++;
             if (index >= length) throw new Exception("Unclosed string");
             string key = json.Substring(keyStart, index - keyStart);
-            index++; // пропускаем закрывающую кавычку
+            index++;
 
-            // Пропускаем пробелы
             while (index < length && char.IsWhiteSpace(json[index])) index++;
             if (index >= length || json[index] != ':')
                 throw new Exception($"Expected ':' at position {index}");
             index++;
 
-            // Пропускаем пробелы
             while (index < length && char.IsWhiteSpace(json[index])) index++;
             if (index >= length) break;
 
-            // Парсим значение
             object value = ParseValue(json, ref index, length);
             result[key] = value;
 
-            // Пропускаем пробелы
             while (index < length && char.IsWhiteSpace(json[index])) index++;
             if (index >= length) break;
 
@@ -838,7 +920,6 @@ public static class SimpleJson
         char c = json[index];
         if (c == '"')
         {
-            // Строка
             index++;
             int start = index;
             while (index < length && json[index] != '"') index++;
@@ -849,7 +930,6 @@ public static class SimpleJson
         }
         else if (c == '{')
         {
-            // Вложенный объект
             int objStart = index;
             int braceCount = 1;
             index++;
@@ -860,11 +940,10 @@ public static class SimpleJson
                 index++;
             }
             string objJson = json.Substring(objStart, index - objStart);
-            return Parse(objJson); // рекурсивно парсим
+            return Parse(objJson);
         }
         else if (c == '[')
         {
-            // Массив (упрощённо, можно доработать)
             int arrStart = index;
             int bracketCount = 1;
             index++;
@@ -875,12 +954,10 @@ public static class SimpleJson
                 index++;
             }
             string arrJson = json.Substring(arrStart, index - arrStart);
-            // Пока возвращаем как строку
             return arrJson;
         }
         else
         {
-            // Число, булево, null
             int start = index;
             while (index < length && json[index] != ',' && json[index] != '}' && json[index] != ']' && !char.IsWhiteSpace(json[index]))
                 index++;
