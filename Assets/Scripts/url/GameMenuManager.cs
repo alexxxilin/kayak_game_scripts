@@ -8,6 +8,9 @@ public class GameMenuManager : MonoBehaviour
 {
     public static GameMenuManager Instance { get; private set; }
 
+    // 🔥 ДОБАВЛЕНО: Ссылка на PlayerStatsManager для мгновенного сохранения
+    private PlayerStatsManager _playerStatsManager;
+
     [Header("UI References")]
     [SerializeField] private GameObject menuPanel;
     [SerializeField] private CanvasGroup menuCanvasGroup;
@@ -79,6 +82,9 @@ public class GameMenuManager : MonoBehaviour
         }
 
         playerController = FindFirstObjectByType<KinematicCharacterController.Examples.ExampleCharacterController>();
+
+        // 🔥 ИНИЦИАЛИЗАЦИЯ ССЫЛКИ НА PLAYER STATS MANAGER
+        _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
 
         InitializeWorldTelegramReward();
 
@@ -281,7 +287,7 @@ public class GameMenuManager : MonoBehaviour
     {
         // Всегда открываем Telegram
         OpenTelegramChannel();
-    
+        
         if (isWorldTelegramRewardClaimed)
         {
             if (showDebugLogs)
@@ -289,9 +295,10 @@ public class GameMenuManager : MonoBehaviour
             return;
         }
 
-        // 🔥 ВЫДАЧА ПИТОМЦА
+        // 🔥 ВЫДАЧА ПИТОМЦА ВМЕСТО МОНЕТ
         if (petSystem != null)
         {
+            // Проверка валидности индексов
             if (telegramRewardShopIndex >= 0 && telegramRewardShopIndex < petSystem.petShops.Count &&
                 telegramRewardPetTypeIndex >= 0 && 
                 telegramRewardPetTypeIndex < petSystem.petShops[telegramRewardShopIndex].pet3DPrefabs.Count)
@@ -303,23 +310,28 @@ public class GameMenuManager : MonoBehaviour
                     petTypeIndex = telegramRewardPetTypeIndex
                 };
                 newPet.SetDonateStatus(isTelegramRewardPetDonate);
-            
+                
                 petSystem.AddPetFromExternal(newPet);
-            
-                Debug.Log($"[{gameObject.name}] Выдан питомец за Telegram: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
-            
-                // 🔥 SavePetsData() внутри AddPetFromExternal уже вызывает YG2.SaveProgress()
-                // Дополнительно можно вызвать для надёжности:
-                YG2.SaveProgress();
+                
+                // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В PLAYER STATS (как донатные питомцы)
+                if (_playerStatsManager != null)
+                {
+                    _playerStatsManager.SetTelegramRewardPetObtained(telegramRewardPetTypeIndex, telegramRewardShopIndex);
+                }
+                
+                Debug.Log($"[{gameObject.name}] Выдан питомец: магазин[{telegramRewardShopIndex}], тип[{telegramRewardPetTypeIndex}]");
+                
+                // 🔥 Дополнительно сохраняем в облако для надёжности
+                SaveTelegramRewardPetToCloud();
             }
             else
             {
-                Debug.LogError($"[{gameObject.name}] Неверные индексы для питомца-награды!");
+                Debug.LogError($"[{gameObject.name}] Неверные индексы для питомца-награды! Shop:{telegramRewardShopIndex}, Pet:{telegramRewardPetTypeIndex}");
             }
         }
         else
         {
-            Debug.LogWarning($"[{gameObject.name}] PetSystem не назначен!");
+            Debug.LogWarning($"[{gameObject.name}] PetSystem не назначен! Награда не выдана.");
         }
 
         // Помечаем награду как полученную

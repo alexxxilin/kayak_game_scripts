@@ -1165,7 +1165,6 @@ public class PetSystem : MonoBehaviour
         CompletePetPurchase(shopIndex, "silver_coins", silverPrice);
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Завершение покупки питомца с метриками
 // 🔥 ОБНОВЛЁННЫЙ МЕТОД: Завершение покупки питомца с метриками и мгновенным сохранением в облако
 private void CompletePetPurchase(int shopIndex, string currencyType, int cost)
 {
@@ -1204,6 +1203,12 @@ private void CompletePetPurchase(int shopIndex, string currencyType, int cost)
     
     // 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ В ОБЛАКО (внутри SavePetsData() уже есть YG2.SaveProgress())
     SavePetsData();
+    
+    // 🔥 НОВОЕ: Сохранение обычного питомца в PlayerStats (для мгновенной синхронизации)
+    if (_playerStatsManager != null && !newPet.IsDonatePet)
+    {
+        _playerStatsManager.SetRegularPetObtained(newPet.petTypeIndex, newPet.shopIndex, currencyType);
+    }
     
     UpdatePetsListUI();
     UpdateCoinsUI();
