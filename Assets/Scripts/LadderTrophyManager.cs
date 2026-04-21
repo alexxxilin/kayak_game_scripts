@@ -90,6 +90,9 @@ public class LadderTrophyManager : MonoBehaviour
             Debug.Log($"[LadderTrophyManager] Выдано {reward} кубков за подъём по лестнице {lastUsedAscentLadder.LadderId}");
         }
 
+        // ✅ НОВОЕ: Отправляем +1 в лидерборд Яндекс.Игр при касании кубка
+        LeaderboardManager.Instance?.AddLadderCompletion();
+
         // Делаем кубок невидимым (отключаем его)
         trophyObject.SetActive(false);
     }

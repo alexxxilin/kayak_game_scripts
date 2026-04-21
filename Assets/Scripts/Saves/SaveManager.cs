@@ -200,10 +200,8 @@ public class SaveManager : MonoBehaviour
             }
         }
         
-        if (petSystem != null)
-        {
-            petSystem.SavePetsData();
-        }
+        // 🔥 PetSystem сохраняет питомцев самостоятельно через YG2.saves
+        // Не вызываем petSystem.SavePetsData() здесь, чтобы избежать дублирования
         
         if (autoInterstitialAd != null)
         {
@@ -222,67 +220,67 @@ public class SaveManager : MonoBehaviour
         }
     }
 
-public void ApplySaveData()
-{
-    if (YG2.saves == null) return;
-    
-    if (_playerStatsManager != null)
+    public void ApplySaveData()
     {
-        long statsCoins = _playerStatsManager.GetRegularCoins();
-        if (statsCoins > 0 && (playerController == null || playerController.CoinsCollected < statsCoins))
-        {
-            Debug.Log($"💰 SaveManager: восстанавливаем монеты из Player Stats: {statsCoins}");
-            YG2.saves.coinsCollected = statsCoins;
-        }
+        if (YG2.saves == null) return;
         
-        int statsSilver = _playerStatsManager.GetSilverCoins();
-        if (statsSilver > 0 && (playerController == null || playerController.SilverCoins < statsSilver))
+        if (_playerStatsManager != null)
         {
-            Debug.Log($"🥈 SaveManager: восстанавливаем серебро из Player Stats: {statsSilver}");
-            YG2.saves.silverCoins = statsSilver;
-        }
-    }
-    
-    if (playerController != null)
-    {
-        playerController.SetCoins(YG2.saves.coinsCollected);
-        playerController.SetSilverCoins(YG2.saves.silverCoins);
-        playerController.SetCursorLocked(YG2.saves.cursorLocked);
-    }
-    
-    if (fortuneWheel != null)
-    {
-        fortuneWheel.SetSpins(YG2.saves.fortuneWheelSpins);
-        fortuneWheel.TimeUntilAdSpinAvailable = YG2.saves.timeUntilAdSpinAvailable;
-    }
-    
-    if (worldSystemManager != null)
-    {
-        worldSystemManager.TrophiesCollected = YG2.saves.trophiesCollected;
-        
-        foreach (var teleport in worldSystemManager.TeleportTriggers)
-        {
-            if (!string.IsNullOrEmpty(teleport.TriggerID))
+            long statsCoins = _playerStatsManager.GetRegularCoins();
+            if (statsCoins > 0 && (playerController == null || playerController.CoinsCollected < statsCoins))
             {
-                teleport.WasBought = YG2.saves.purchasedTeleportTriggers.Contains(teleport.TriggerID);
+                Debug.Log($"💰 SaveManager: восстанавливаем монеты из Player Stats: {statsCoins}");
+                YG2.saves.coinsCollected = statsCoins;
+            }
+            
+            int statsSilver = _playerStatsManager.GetSilverCoins();
+            if (statsSilver > 0 && (playerController == null || playerController.SilverCoins < statsSilver))
+            {
+                Debug.Log($"🥈 SaveManager: восстанавливаем серебро из Player Stats: {statsSilver}");
+                YG2.saves.silverCoins = statsSilver;
             }
         }
         
-        var panels = worldSystemManager.TeleportUIPanels;
-        var savedStates = YG2.saves.teleportPanelUnlocked;
-        for (int i = 0; i < panels.Count && i < savedStates.Count; i++)
+        if (playerController != null)
         {
-            panels[i].WasUnlocked = savedStates[i];
+            playerController.SetCoins(YG2.saves.coinsCollected);
+            playerController.SetSilverCoins(YG2.saves.silverCoins);
+            playerController.SetCursorLocked(YG2.saves.cursorLocked);
         }
         
-        worldSystemManager.CurrentLocationID = YG2.saves.currentLocationID;
+        if (fortuneWheel != null)
+        {
+            fortuneWheel.SetSpins(YG2.saves.fortuneWheelSpins);
+            fortuneWheel.TimeUntilAdSpinAvailable = YG2.saves.timeUntilAdSpinAvailable;
+        }
+        
+        if (worldSystemManager != null)
+        {
+            worldSystemManager.TrophiesCollected = YG2.saves.trophiesCollected;
+            
+            foreach (var teleport in worldSystemManager.TeleportTriggers)
+            {
+                if (!string.IsNullOrEmpty(teleport.TriggerID))
+                {
+                    teleport.WasBought = YG2.saves.purchasedTeleportTriggers.Contains(teleport.TriggerID);
+                }
+            }
+            
+            var panels = worldSystemManager.TeleportUIPanels;
+            var savedStates = YG2.saves.teleportPanelUnlocked;
+            for (int i = 0; i < panels.Count && i < savedStates.Count; i++)
+            {
+                panels[i].WasUnlocked = savedStates[i];
+            }
+            
+            worldSystemManager.CurrentLocationID = YG2.saves.currentLocationID;
+        }
+        
+        if (LeaderboardManager.Instance != null)
+        {
+            LeaderboardManager.Instance.SetLadderCompletionCount(YG2.saves.ladderCompletionCount);
+        }
     }
-    
-    if (LeaderboardManager.Instance != null)
-    {
-        LeaderboardManager.Instance.SetLadderCompletionCount(YG2.saves.ladderCompletionCount);
-    }
-}
 
     public void OnDonatePetPurchased()
     {
@@ -290,16 +288,13 @@ public void ApplySaveData()
         Debug.Log("🎁 Сохранение после покупки донатного питомца");
     }
 
-    // 🔥 ОБНОВЛЁННЫЙ МЕТОД: полный сброс с синхронизацией VIP и монет
     [ContextMenu("Сбросить сохранения")]
     public void ResetSaveData()
     {
-        Debug.Log("🔄 Начинаем полный сброс ВСЕХ сохранений (включая донатные покупки)...");
+        Debug.Log("🔄 Начинаем полный сброс ВСЕХ сохранений...");
         
-        // 1. Сброс стандартных сохранений
         YG2.SetDefaultSaves();
         
-        // 2. Явный сброс донатных данных в облаке
         if (YG2.saves != null)
         {
             YG2.saves.vipUnlocked = false;
@@ -308,38 +303,20 @@ public void ApplySaveData()
             YG2.saves.adsDisabled = false;
             YG2.saves.pendingAdsDisabled = false;
             YG2.saves.ownedPets?.Clear();
+            YG2.saves.equippedPetIds?.Clear();
+            YG2.saves.nextPetId = 0;
         }
 
-        // 3. Сброс донатных покупок через PlayerStatsManager
         if (_playerStatsManager != null)
         {
             _playerStatsManager.ResetAllDonatePurchases();
-            Debug.Log("✅ Player Stats (донатные покупки) сброшены");
-        }
-        else
-        {
-            _playerStatsManager = FindFirstObjectByType<PlayerStatsManager>();
-            if (_playerStatsManager != null)
-            {
-                _playerStatsManager.ResetAllDonatePurchases();
-            }
-            else
-            {
-                Debug.LogWarning("PlayerStatsManager не найден, создаем временный");
-                GameObject tempStats = new GameObject("TempPlayerStats");
-                var tempManager = tempStats.AddComponent<PlayerStatsManager>();
-                tempManager.ResetAllDonatePurchases();
-                Destroy(tempStats);
-            }
+            Debug.Log("✅ Player Stats сброшены");
         }
         
-        // 4. Принудительное сохранение в облако
         YG2.SaveProgress();
         
-        // 5. Применяем данные к игровым объектам
         ApplySaveData();
         
-        // 6. Обновляем UI VIP с небольшой задержкой
         var vipManager = FindFirstObjectByType<VIPManager>();
         if (vipManager != null)
         {
@@ -357,7 +334,7 @@ public void ApplySaveData()
 
     public void ResetAllData()
     {
-        Debug.Log("🔄 Вызван сброс всех данных (включая Player Stats) из консоли");
+        Debug.Log("🔄 Вызван сброс всех данных из консоли");
         ResetSaveData();
     }
 

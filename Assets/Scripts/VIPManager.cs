@@ -139,30 +139,34 @@ public class VIPManager : MonoBehaviour
     public void GrantVIP()
     {
         if (vipUnlocked) return;
-        
+    
         Debug.Log("✅ VIPManager: выдаём вознаграждение за покупку");
-        
+    
         vipUnlocked = true;
         if (vipPanel != null) vipPanel.SetActive(false);
         HideTriggerObjects();
 
+        // 🔥 Сохраняем статус через PlayerStats + YG2.saves
         if (PlayerStatsManager.Instance != null)
         {
             PlayerStatsManager.Instance.SetVIPUnlocked(true);
-            PlayerStatsManager.Instance.ForceSave();
         }
-        else if (YG2.saves != null)
+    
+        if (YG2.saves != null)
         {
             YG2.saves.vipUnlocked = true;
-            YG2.SaveProgress();
         }
+    
+        // 🔥 Мгновенное сохранение в облако
+        YG2.SaveProgress();
 
+        // Обновляем доступ к VIP-лестницам
         var vipLadders = FindObjectsOfType<LadderZone>();
         foreach (var ladder in vipLadders)
             if (ladder.IsVIP) ladder.SetVIPAccess(true);
-            
-        UpdatePriceDisplay();
         
+        UpdatePriceDisplay();
+    
         Debug.Log("🎉 VIP активирован!");
     }
 

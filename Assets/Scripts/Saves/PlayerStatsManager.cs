@@ -10,9 +10,6 @@ public class PlayerStatsManager : MonoBehaviour
 
     private const string PENDING_ADS_DISABLED_KEY = "PendingAdsDisabled";
     private const string ADS_DISABLED_KEY = "AdsDisabled";
-    private const string DONATE_PET_PREFIX = "DonatePet_";
-    private const string REGULAR_PET_PREFIX = "RegularPet_";
-    private const string TELEGRAM_PET_PREFIX = "TelegramPet_";
     private const string SILVER_COINS_KEY = "SilverCoins";
     private const string REGULAR_COINS_KEY = "RegularCoins";
     private const string VIP_UNLOCKED_KEY = "VipUnlocked";
@@ -23,9 +20,6 @@ public class PlayerStatsManager : MonoBehaviour
     [Tooltip("Задержка между попытками сохранения (сек)")]
     public float saveAttemptDelay = 0.2f;
 
-    private List<string> _allDonatePetKeys = new List<string>();
-    private List<string> _allRegularPetKeys = new List<string>();
-    private List<string> _allTelegramPetKeys = new List<string>();
     private bool _sdkReady = false;
 
     private void Awake()
@@ -47,7 +41,6 @@ public class PlayerStatsManager : MonoBehaviour
         if (YG2.isSDKEnabled)
         {
             _sdkReady = true;
-            LoadAllPetKeys();
             SyncWithSavesOnLoad();
             CheckAndApplyPendingAdsDisabled();
             CheckAndRestoreCoins();
@@ -63,89 +56,61 @@ public class PlayerStatsManager : MonoBehaviour
     {
         _sdkReady = true;
         Debug.Log("📦 PlayerStatsManager: данные SDK загружены");
-
-        LoadAllPetKeys();
         SyncWithSavesOnLoad();
         CheckAndApplyPendingAdsDisabled();
         CheckAndRestoreCoins();
     }
 
-    // === VIP METHODS ===
-    
+    // === VIP ===
     public void SetVIPUnlocked(bool value)
     {
         if (!_sdkReady) return;
-        
         int intValue = value ? 1 : 0;
-        Debug.Log($"👑 PlayerStats: устанавливаем VIP = {value}");
-        
         YG2.SetState(VIP_UNLOCKED_KEY, intValue);
-
         if (YG2.saves != null)
         {
             YG2.saves.vipUnlocked = value;
             YG2.SaveProgress();
         }
-        
         StartCoroutine(GuaranteedSaveCoroutine(VIP_UNLOCKED_KEY, intValue));
     }
 
-    public bool GetVIPUnlocked()
-    {
-        if (!_sdkReady) return false;
-        return YG2.GetState(VIP_UNLOCKED_KEY) == 1;
-    }
+    public bool GetVIPUnlocked() => _sdkReady && YG2.GetState(VIP_UNLOCKED_KEY) == 1;
 
-    public void ForceSave()
+    // === Монеты ===
+    public void SetRegularCoins(long amount)
     {
         if (!_sdkReady) return;
-        
-        Debug.Log("💾 PlayerStats: принудительное сохранение");
-        
-        YG2.SetState(VIP_UNLOCKED_KEY, GetVIPUnlocked() ? 1 : 0);
-        YG2.SetState(SILVER_COINS_KEY, GetSilverCoins());
-        YG2.SetState(REGULAR_COINS_KEY, (int)GetRegularCoins());
-        YG2.SetState(ADS_DISABLED_KEY, GetAdsDisabled() ? 1 : 0);
-        
-        if (YG2.saves != null)
-        {
-            YG2.saves.vipUnlocked = GetVIPUnlocked();
-            YG2.saves.silverCoins = GetSilverCoins();
-            YG2.saves.coinsCollected = GetRegularCoins();
-            YG2.saves.adsDisabled = GetAdsDisabled();
-            YG2.SaveProgress();
-        }
+        YG2.SetState(REGULAR_COINS_KEY, (int)amount);
     }
 
-    // === ОСТАЛЬНЫЕ МЕТОДЫ ===
-    
+    public long GetRegularCoins() => _sdkReady ? YG2.GetState(REGULAR_COINS_KEY) : 0;
+
+    public void SetSilverCoins(int amount)
+    {
+        if (!_sdkReady) return;
+        YG2.SetState(SILVER_COINS_KEY, amount);
+    }
+
+    public int GetSilverCoins() => _sdkReady ? YG2.GetState(SILVER_COINS_KEY) : 0;
+
+    // === Реклама ===
     public void SetPendingAdsDisabled(bool value)
     {
         if (!_sdkReady) return;
-        int intValue = value ? 1 : 0;
-        Debug.Log($"⚡ PlayerStats: устанавливаем {PENDING_ADS_DISABLED_KEY} = {intValue}");
-        YG2.SetState(PENDING_ADS_DISABLED_KEY, intValue);
-        StartCoroutine(GuaranteedSaveCoroutine(PENDING_ADS_DISABLED_KEY, intValue));
+        YG2.SetState(PENDING_ADS_DISABLED_KEY, value ? 1 : 0);
+        StartCoroutine(GuaranteedSaveCoroutine(PENDING_ADS_DISABLED_KEY, value ? 1 : 0));
     }
 
-    public bool GetPendingAdsDisabled()
-    {
-        if (!_sdkReady) return false;
-        return YG2.GetState(PENDING_ADS_DISABLED_KEY) == 1;
-    }
+    public bool GetPendingAdsDisabled() => _sdkReady && YG2.GetState(PENDING_ADS_DISABLED_KEY) == 1;
 
     public void SetAdsDisabled(bool value)
     {
         if (!_sdkReady) return;
-        int intValue = value ? 1 : 0;
-        YG2.SetState(ADS_DISABLED_KEY, intValue);
+        YG2.SetState(ADS_DISABLED_KEY, value ? 1 : 0);
     }
 
-    public bool GetAdsDisabled()
-    {
-        if (!_sdkReady) return false;
-        return YG2.GetState(ADS_DISABLED_KEY) == 1;
-    }
+    public bool GetAdsDisabled() => _sdkReady && YG2.GetState(ADS_DISABLED_KEY) == 1;
 
     public void ClearPendingAdsDisabled()
     {
@@ -158,38 +123,11 @@ public class PlayerStatsManager : MonoBehaviour
         if (!_sdkReady) return;
         if (GetPendingAdsDisabled() && !GetAdsDisabled())
         {
-            Debug.Log("🔍 PlayerStats: найден pending-флаг! Применяем отключение рекламы");
-            AutoInterstitialAd adManager = FindFirstObjectByType<AutoInterstitialAd>();
+            var adManager = FindFirstObjectByType<AutoInterstitialAd>();
             adManager?.ApplyAdsDisabledFromStats();
             SetAdsDisabled(true);
             ClearPendingAdsDisabled();
         }
-    }
-
-    public void SetRegularCoins(long amount)
-    {
-        if (!_sdkReady) return;
-        Debug.Log($"💰 PlayerStats: сохраняем обычные монеты = {amount}");
-        YG2.SetState(REGULAR_COINS_KEY, (int)amount);
-    }
-
-    public long GetRegularCoins()
-    {
-        if (!_sdkReady) return 0;
-        return YG2.GetState(REGULAR_COINS_KEY);
-    }
-
-    public void SetSilverCoins(int amount)
-    {
-        if (!_sdkReady) return;
-        Debug.Log($"🥈 PlayerStats: сохраняем серебряные монеты = {amount}");
-        YG2.SetState(SILVER_COINS_KEY, amount);
-    }
-
-    public int GetSilverCoins()
-    {
-        if (!_sdkReady) return 0;
-        return YG2.GetState(SILVER_COINS_KEY);
     }
 
     private void CheckAndRestoreCoins()
@@ -198,297 +136,63 @@ public class PlayerStatsManager : MonoBehaviour
         var player = FindFirstObjectByType<KinematicCharacterController.Examples.ExampleCharacterController>();
         if (player == null) return;
 
-        long savedRegularCoins = GetRegularCoins();
-        if (savedRegularCoins > 0 && player.CoinsCollected < savedRegularCoins)
+        long savedRegular = GetRegularCoins();
+        if (savedRegular > 0 && player.CoinsCollected < savedRegular)
         {
-            Debug.Log($"💰 PlayerStats: восстанавливаем обычные монеты: {savedRegularCoins}");
-            player.SetCoins(savedRegularCoins);
+            player.SetCoins(savedRegular);
         }
 
-        int savedSilverCoins = GetSilverCoins();
-        if (savedSilverCoins > 0 && player.SilverCoins < savedSilverCoins)
+        int savedSilver = GetSilverCoins();
+        if (savedSilver > 0 && player.SilverCoins < savedSilver)
         {
-            Debug.Log($"🥈 PlayerStats: восстанавливаем серебряные монеты: {savedSilverCoins}");
-            player.SetSilverCoins(savedSilverCoins);
+            player.SetSilverCoins(savedSilver);
         }
     }
 
-    // 🔥 ДОНАТНЫЕ ПИТОМЦЫ
-    public void SetDonatePetPurchased(int petIndex, int shopIndex)
-    {
-        if (!_sdkReady) return;
-        string key = $"{DONATE_PET_PREFIX}{shopIndex}_{petIndex}";
-        Debug.Log($"🐕 PlayerStats: отмечаем покупку донатного питомца {key}");
-        YG2.SetState(key, 1);
-
-        if (!_allDonatePetKeys.Contains(key))
-        {
-            _allDonatePetKeys.Add(key);
-        }
-
-        StartCoroutine(GuaranteedSaveCoroutine(key, 1));
-    }
-
-    public bool IsDonatePetPurchased(int petIndex, int shopIndex)
-    {
-        if (!_sdkReady) return false;
-        string key = $"{DONATE_PET_PREFIX}{shopIndex}_{petIndex}";
-        return YG2.GetState(key) == 1;
-    }
-
-    // 🔥 ОБЫЧНЫЕ ПИТОМЦЫ
-    public void SetRegularPetObtained(int petIndex, int shopIndex, string source = "shop")
-    {
-        if (!_sdkReady) return;
-        string key = $"{REGULAR_PET_PREFIX}{shopIndex}_{petIndex}_{source}";
-        Debug.Log($"🐕 PlayerStats: отмечаем получение обычного питомца {key}");
-        YG2.SetState(key, 1);
-
-        if (!_allRegularPetKeys.Contains(key))
-        {
-            _allRegularPetKeys.Add(key);
-        }
-
-        StartCoroutine(GuaranteedSaveCoroutine(key, 1));
-    }
-
-    public bool IsRegularPetObtained(int petIndex, int shopIndex, string source = "shop")
-    {
-        if (!_sdkReady) return false;
-        string key = $"{REGULAR_PET_PREFIX}{shopIndex}_{petIndex}_{source}";
-        return YG2.GetState(key) == 1;
-    }
-
-    // 🔥 ПИТОМЦЫ ЗА TELEGRAM
-    public void SetTelegramRewardPetObtained(int petIndex, int shopIndex)
-    {
-        if (!_sdkReady) return;
-        string key = $"{TELEGRAM_PET_PREFIX}{shopIndex}_{petIndex}";
-        Debug.Log($"🐕 PlayerStats: отмечаем получение питомца за Telegram {key}");
-        YG2.SetState(key, 1);
-
-        if (!_allTelegramPetKeys.Contains(key))
-        {
-            _allTelegramPetKeys.Add(key);
-        }
-
-        StartCoroutine(GuaranteedSaveCoroutine(key, 1));
-    }
-
-    public bool IsTelegramRewardPetObtained(int petIndex, int shopIndex)
-    {
-        if (!_sdkReady) return false;
-        string key = $"{TELEGRAM_PET_PREFIX}{shopIndex}_{petIndex}";
-        return YG2.GetState(key) == 1;
-    }
-
-    public List<string> GetAllPurchasedDonatePets()
-    {
-        List<string> purchasedPets = new List<string>();
-        if (!_sdkReady) return purchasedPets;
-
-        var allStats = YG2.GetAllStats();
-        foreach (var stat in allStats)
-        {
-            if (stat.Key.StartsWith(DONATE_PET_PREFIX) && stat.Value == 1)
-            {
-                purchasedPets.Add(stat.Key);
-                if (!_allDonatePetKeys.Contains(stat.Key))
-                {
-                    _allDonatePetKeys.Add(stat.Key);
-                }
-            }
-        }
-        return purchasedPets;
-    }
-
-    // 🔥 НОВЫЙ МЕТОД: получение всех обычных питомцев из Player Stats
-    public List<string> GetAllObtainedRegularPets()
-    {
-        List<string> obtainedPets = new List<string>();
-        if (!_sdkReady) return obtainedPets;
-
-        var allStats = YG2.GetAllStats();
-        foreach (var stat in allStats)
-        {
-            if (stat.Key.StartsWith(REGULAR_PET_PREFIX) && stat.Value == 1)
-            {
-                obtainedPets.Add(stat.Key);
-                if (!_allRegularPetKeys.Contains(stat.Key))
-                {
-                    _allRegularPetKeys.Add(stat.Key);
-                }
-            }
-        }
-        return obtainedPets;
-    }
-
-    private void LoadAllPetKeys()
-    {
-        if (!_sdkReady) return;
-        
-        _allDonatePetKeys.Clear();
-        _allRegularPetKeys.Clear();
-        _allTelegramPetKeys.Clear();
-        
-        var allStats = YG2.GetAllStats();
-        foreach (var stat in allStats)
-        {
-            if (stat.Key.StartsWith(DONATE_PET_PREFIX))
-            {
-                _allDonatePetKeys.Add(stat.Key);
-            }
-            else if (stat.Key.StartsWith(REGULAR_PET_PREFIX))
-            {
-                _allRegularPetKeys.Add(stat.Key);
-            }
-            else if (stat.Key.StartsWith(TELEGRAM_PET_PREFIX))
-            {
-                _allTelegramPetKeys.Add(stat.Key);
-            }
-        }
-    }
-
-    public void SyncWithSavesOnLoad()
+    private void SyncWithSavesOnLoad()
     {
         if (!_sdkReady || YG2.saves == null) return;
 
-        Debug.Log("🔄 Синхронизация: Player Stats → Cloud Saves (приоритет доната)...");
-
-        bool vipStats = GetVIPUnlocked();
-        if (vipStats && !YG2.saves.vipUnlocked)
-        {
-            Debug.Log("👑 Восстанавливаем VIP из Player Stats в Cloud Saves");
-            YG2.saves.vipUnlocked = true;
-        }
-        else if (!vipStats && YG2.saves.vipUnlocked)
-        {
-            SetVIPUnlocked(true);
-        }
-
-        if (GetAdsDisabled() && !YG2.saves.adsDisabled)
-        {
-            Debug.Log("✅ Восстанавливаем отключение рекламы из Player Stats в Cloud Saves");
-            YG2.saves.adsDisabled = true;
-            YG2.saves.pendingAdsDisabled = false;
-        }
-        else if (!GetAdsDisabled() && YG2.saves.adsDisabled)
-        {
-            SetAdsDisabled(true);
-        }
-
+        // Синхронизация: монеты
         long statsCoins = GetRegularCoins();
         if (statsCoins > YG2.saves.coinsCollected)
-        {
-            Debug.Log($"✅ Восстанавливаем обычные монеты из Player Stats: {statsCoins}");
             YG2.saves.coinsCollected = statsCoins;
-        }
         else if (YG2.saves.coinsCollected > statsCoins)
-        {
             SetRegularCoins((long)YG2.saves.coinsCollected);
-        }
 
         int statsSilver = GetSilverCoins();
         if (statsSilver > YG2.saves.silverCoins)
-        {
-            Debug.Log($"✅ Восстанавливаем серебряные монеты из Player Stats: {statsSilver}");
             YG2.saves.silverCoins = statsSilver;
-        }
         else if (YG2.saves.silverCoins > statsSilver)
-        {
             SetSilverCoins(YG2.saves.silverCoins);
-        }
 
-        // 🔥 Синхронизация донатных питомцев
-        var purchasedPets = GetAllPurchasedDonatePets();
-        foreach (string petKey in purchasedPets)
-        {
-            string[] parts = petKey.Replace("DonatePet_", "").Split('_');
-            if (parts.Length == 2 && int.TryParse(parts[0], out int shopIndex) && int.TryParse(parts[1], out int petIndex))
-            {
-                bool existsInSaves = false;
-                foreach (var pet in YG2.saves.ownedPets)
-                {
-                    if (pet.shopIndex == shopIndex && pet.petTypeIndex == petIndex && pet.isDonatePet)
-                    {
-                        existsInSaves = true;
-                        break;
-                    }
-                }
+        // Синхронизация: VIP
+        bool vipStats = GetVIPUnlocked();
+        if (vipStats && !YG2.saves.vipUnlocked)
+            YG2.saves.vipUnlocked = true;
+        else if (!vipStats && YG2.saves.vipUnlocked)
+            SetVIPUnlocked(true);
 
-                if (!existsInSaves)
-                {
-                    Debug.Log($"✅ Восстанавливаем питомца [{shopIndex}:{petIndex}] из Player Stats в Cloud Saves");
-                    YG2.saves.ownedPets.Add(new PetSaveData
-                    {
-                        id = UnityEngine.Random.Range(10000, 99999),
-                        shopIndex = shopIndex,
-                        petTypeIndex = petIndex,
-                        isDonatePet = true
-                    });
-                }
-            }
-        }
+        // Синхронизация: реклама
+        if (GetAdsDisabled() && !YG2.saves.adsDisabled)
+            YG2.saves.adsDisabled = true;
+        else if (!GetAdsDisabled() && YG2.saves.adsDisabled)
+            SetAdsDisabled(true);
 
-        // 🔥 Синхронизация обычных питомцев из Player Stats в Cloud Saves
-        var regularPets = GetAllObtainedRegularPets();
-        foreach (string petKey in regularPets)
-        {
-            // Формат ключа: "RegularPet_shopIndex_petIndex_source"
-            string[] parts = petKey.Replace("RegularPet_", "").Split('_');
-            if (parts.Length >= 2 && int.TryParse(parts[0], out int shopIndex) && int.TryParse(parts[1], out int petIndex))
-            {
-                bool existsInSaves = false;
-                foreach (var pet in YG2.saves.ownedPets)
-                {
-                    if (pet.shopIndex == shopIndex && pet.petTypeIndex == petIndex && !pet.isDonatePet)
-                    {
-                        existsInSaves = true;
-                        break;
-                    }
-                }
-
-                if (!existsInSaves)
-                {
-                    Debug.Log($"✅ Восстанавливаем обычного питомца [{shopIndex}:{petIndex}] из Player Stats в Cloud Saves");
-                    YG2.saves.ownedPets.Add(new PetSaveData
-                    {
-                        id = UnityEngine.Random.Range(10000, 99999),
-                        shopIndex = shopIndex,
-                        petTypeIndex = petIndex,
-                        isDonatePet = false
-                    });
-                }
-            }
-        }
-
-        SaveManager saveManager = FindFirstObjectByType<SaveManager>();
+        var saveManager = FindFirstObjectByType<SaveManager>();
         if (saveManager != null)
-        {
-            saveManager.SaveImmediately("sync_stats_to_saves");
-        }
+            saveManager.SaveImmediately("sync_stats");
         else
-        {
             YG2.SaveProgress();
-        }
-
-        Debug.Log("✅ Синхронизация завершена (приоритет у Player Stats для доната)");
     }
 
-    // 🔥 ОБНОВЛЁННЫЙ МЕТОД: полный сброс донатных покупок и VIP
     public void ResetAllDonatePurchases()
     {
-        Debug.Log("🧹 Сбрасываем ВСЕ донатные покупки в Player Stats...");
-
-        // Сброс флагов
+        Debug.Log("🧹 Сброс Player Stats (без питомцев)...");
         SetPendingAdsDisabled(false);
         SetAdsDisabled(false);
-        
-        // 🔥 VIP: сбрасываем в Player Stats и в YG2.saves
         YG2.SetState(VIP_UNLOCKED_KEY, 0);
         if (YG2.saves != null) YG2.saves.vipUnlocked = false;
-
-        // 🔥 Монеты: сбрасываем в Player Stats и в YG2.saves
         SetRegularCoins(0);
         SetSilverCoins(0);
         if (YG2.saves != null)
@@ -497,92 +201,36 @@ public class PlayerStatsManager : MonoBehaviour
             YG2.saves.coinsCollected = 0;
         }
 
-        Debug.Log("   ✅ Реклама, VIP и монеты сброшены");
-
-        // Сброс питомцев
-        int petCount = 0;
-        foreach (string key in _allDonatePetKeys)
-        {
-            YG2.SetState(key, 0);
-            petCount++;
-        }
-        Debug.Log($"   ✅ {petCount} донатных питомцев сброшено");
-
-        _allDonatePetKeys.Clear();
-
-        // Очистка остальных статов (кроме системных ключей)
         var currentStats = YG2.GetAllStats();
-        Dictionary<string, int> cleanedStats = new Dictionary<string, int>();
+        Dictionary<string, int> cleaned = new Dictionary<string, int>();
         foreach (var stat in currentStats)
         {
-            if (!stat.Key.StartsWith(DONATE_PET_PREFIX) &&
-                !stat.Key.StartsWith(REGULAR_PET_PREFIX) &&
-                !stat.Key.StartsWith(TELEGRAM_PET_PREFIX) &&
-                stat.Key != PENDING_ADS_DISABLED_KEY &&
+            if (stat.Key != PENDING_ADS_DISABLED_KEY &&
                 stat.Key != ADS_DISABLED_KEY &&
                 stat.Key != REGULAR_COINS_KEY &&
                 stat.Key != SILVER_COINS_KEY &&
                 stat.Key != VIP_UNLOCKED_KEY)
             {
-                cleanedStats[stat.Key] = stat.Value;
+                cleaned[stat.Key] = stat.Value;
             }
         }
-        YG2.SetAllStats(cleanedStats);
-
-        // 🔥 Немедленное сохранение в облако
+        YG2.SetAllStats(cleaned);
         YG2.SaveProgress();
-        
-        // 🔥 Уведомляем системы об изменении
-        NotifySystemsAboutReset();
-
-        Debug.Log("✅ Все донатные покупки в Player Stats полностью сброшены!");
-    }
-
-    // 🔥 Уведомление других менеджеров о сбросе
-    private void NotifySystemsAboutReset()
-    {
-        var vipManager = FindFirstObjectByType<VIPManager>();
-        vipManager?.OnVIPStatusReset();
-        
-        var petSystem = FindFirstObjectByType<PetSystem>();
-        petSystem?.ResetPetsData();
-    }
-
-    private IEnumerator ForceSaveAfterReset()
-    {
-        yield return new WaitForSecondsRealtime(0.2f);
-        YG2.SetState(PENDING_ADS_DISABLED_KEY, 0);
-        YG2.SetState(ADS_DISABLED_KEY, 0);
-        YG2.SetState(REGULAR_COINS_KEY, 0);
-        YG2.SetState(SILVER_COINS_KEY, 0);
-        YG2.SetState(VIP_UNLOCKED_KEY, 0);
-        Debug.Log("💾 Финальное сохранение после сброса");
     }
 
     private IEnumerator GuaranteedSaveCoroutine(string key, int value)
     {
         int attempts = 0;
         bool saved = false;
-
         while (attempts < maxSaveAttempts && !saved)
         {
             attempts++;
-            Debug.Log($"💾 PlayerStats: попытка сохранения #{attempts} для {key}");
-
             YG2.SetState(key, value);
             yield return new WaitForSecondsRealtime(saveAttemptDelay);
-
-            if (YG2.GetState(key) == value)
-            {
-                saved = true;
-                Debug.Log($"✅ PlayerStats: ключ {key} подтвержден после попытки #{attempts}");
-            }
+            if (YG2.GetState(key) == value) saved = true;
         }
-
-        if (!saved)
-        {
-            Debug.LogError($"❌ PlayerStats: не удалось сохранить {key} после {maxSaveAttempts} попыток!");
-        }
+        if (!saved) Debug.LogError($"❌ Не удалось сохранить {key}");
+        YG2.SaveProgress();
     }
 
     [ContextMenu("Очистить все Player Stats")]
@@ -590,18 +238,5 @@ public class PlayerStatsManager : MonoBehaviour
     {
         if (!_sdkReady) return;
         YG2.SetAllStats(new Dictionary<string, int>());
-        Debug.Log("🧹 Все Player Stats очищены");
-    }
-
-    [ContextMenu("Логировать все Player Stats")]
-    public void LogAllStats()
-    {
-        if (!_sdkReady) return;
-        var allStats = YG2.GetAllStats();
-        Debug.Log("📊 Все Player Stats:");
-        foreach (var stat in allStats)
-        {
-            Debug.Log($"   {stat.Key}: {stat.Value}");
-        }
     }
 }

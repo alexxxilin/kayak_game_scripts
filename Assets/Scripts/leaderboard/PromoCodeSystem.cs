@@ -580,10 +580,11 @@ public class PromoCodeSystem : MonoBehaviour
         var shop = petSystem.petShops[shopIndex];
         if (petIndex < 0 || petIndex >= shop.pet3DPrefabs.Count)
         {
-            Debug.LogError($"[PromoCode] Неверный индекс питомца: {petIndex} в магазине {shopIndex}");
+            Debug.LogError($"[PromoCode] Неверный индекс питомца: {petIndex}");
             return false;
         }
 
+        // Проверка: уже есть такой питомец?
         bool alreadyOwned = false;
         foreach (var pet in petSystem.ownedPets)
         {
@@ -600,6 +601,7 @@ public class PromoCodeSystem : MonoBehaviour
             return false;
         }
 
+        // Создаём и добавляем питомца
         var newPet = new PetSystem.PetInstance
         {
             id = petSystem.GetNextPetId(),
@@ -607,13 +609,10 @@ public class PromoCodeSystem : MonoBehaviour
             petTypeIndex = petIndex
         };
         newPet.SetDonateStatus(shop.isDonateShop);
-
         petSystem.AddPetFromExternal(newPet);
 
-        if (shop.isDonateShop && playerStatsManager != null)
-        {
-            playerStatsManager.SetDonatePetPurchased(petIndex, shopIndex);
-        }
+        // 🔥 СОХРАНЯЕМ ПИТОМЦЕВ ЧЕРЕЗ PetSystem → YG2.saves (НЕ через PlayerStats!)
+        petSystem.SavePetsData();
 
         return true;
     }
